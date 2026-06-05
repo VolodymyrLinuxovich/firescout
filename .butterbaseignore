@@ -1,0 +1,6 @@
+# Patterns here ADD to the defaults (.git/, node_modules/, dist/, .next/, .turbo/, .DS_Store, .butterbase/).
+# .gitignore patterns also apply. Use `!path` to un-ignore.
+
+# Examples:
+# secrets/
+# *.local
