@@ -11,12 +11,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "text required" }, { status: 400 });
   }
   try {
-    await sendMessage({
+    const sent = await sendMessage({
       platform: platform ?? "whatsapp",
       channelId: channelId ?? "firescout-demo",
       text,
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: sent }, { status: sent ? 200 : 502 });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

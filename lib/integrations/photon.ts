@@ -27,22 +27,22 @@ async function sendViaLoopMessage(text: string): Promise<boolean> {
   const recipient = normalizePhone(imessageNumber);
 
   try {
-    const resp = await fetch("https://gateway.loopmessage.com/api/v1/message/send/", {
+    const resp = await fetch("https://a.loopmessage.com/api/v1/message/send/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `ApiKey ${loopMessageApiKey}`,
+        "Authorization": loopMessageApiKey,
       },
-      body: JSON.stringify({ recipient, message: text }),
+      body: JSON.stringify({ contact: recipient, text, channel: "imessage" }),
       signal: AbortSignal.timeout(10000),
     });
 
     const body = await resp.text().catch(() => "");
     if (resp.ok) {
-      console.log(`[iMessage → LoopMessage] Delivered to ${recipient}`);
+      console.log(`[iMessage → LoopMessage] Queued to ${recipient}: ${body.slice(0, 200)}`);
       return true;
     }
-    console.warn(`[iMessage → LoopMessage] ${resp.status}: ${body.slice(0, 200)}`);
+    console.warn(`[iMessage → LoopMessage] ${resp.status}: ${body.slice(0, 1000)}`);
     return false;
   } catch (e) {
     console.warn("[iMessage → LoopMessage] fetch failed:", String(e).slice(0, 100));
@@ -126,7 +126,7 @@ export async function sendMessage(msg: OutboundMessage): Promise<boolean> {
     if (msg.mapUrl) console.log(`  Map: ${msg.mapUrl}`);
   }
 
-  return true;
+  return imsgOk || waOk;
 }
 
 // ── Incoming webhook normalizer (kept for Photon webhook route) ───────────────
