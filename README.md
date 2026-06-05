@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="https://drive.google.com/uc?export=view&id=1iuJPHzkDZrS26L8bQKaWH3h8HTsanqSA" alt="FireScout Logo" width="160" />
-
+  
 # FireScout
 
 **A global wildfire smoke intelligence agent** that monitors any location, runs RocketRide-powered AI workflows, remembers changing conditions with XTrace, persists reports through Butterbase, and delivers actionable smoke-risk updates through Photon/Spectrum messaging.
