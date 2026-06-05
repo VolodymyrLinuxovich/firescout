@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleCurrentRisk } from "@/lib/workflow";
-import { geocode } from "@/lib/geocode";
+import { handleCurrentRisk, handleWhatChanged } from "@/lib/workflow";
 import type { BriefRequestBody } from "@/lib/types";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let body: BriefRequestBody;
+  let body: BriefRequestBody & { intent?: string };
   try {
     body = await req.json();
   } catch {
@@ -16,11 +15,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "ownerType and ownerId required" }, { status: 400 });
   }
 
-  let entities: Record<string, string> = {};
+  const entities: Record<string, string> = {};
   if (locationName) entities.location = locationName;
   if (activity) entities.activity = activity;
 
-  const result = await handleCurrentRisk({ ownerType, ownerId, entities, forceRefresh });
+  const handler = body.intent === "what_changed" ? handleWhatChanged : handleCurrentRisk;
+  let result;
+  try {
+    result = await handler({ ownerType, ownerId, entities, ...(body.intent !== "what_changed" ? { forceRefresh } : {}) });
+  } catch (err) {
+    console.error("[brief] workflow error:", err);
+    return NextResponse.json({ error: "Analysis failed", detail: String(err) }, { status: 500 });
+  }
 
   return NextResponse.json({
     reportId: result.reportId ?? null,
@@ -29,5 +35,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     text: result.text,
     mapUrl: result.mapUrl ?? null,
     imageUrl: result.imageUrl ?? null,
+    pipelineTrace: result.pipelineTrace ?? null,
+    memoryFacts: result.memoryFacts ?? [],
+    report: result.report ?? null,
+    deltaReport: result.deltaReport ?? null,
+    photonMessage: result.photonMessage ?? null,
   });
 }

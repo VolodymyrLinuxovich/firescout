@@ -13,7 +13,7 @@ export interface Location {
 }
 
 export interface AirQualityObservation {
-  provider: "AirNow";
+  provider: "AirNow" | "Open-Meteo";
   aqi: number | null;
   category: string | null;
   pollutant: string | null;
@@ -38,7 +38,7 @@ export interface FireDetection {
 }
 
 export interface WindSnapshot {
-  provider: "NWS";
+  provider: "NWS" | "Open-Meteo";
   windSpeedMps: number | null;
   windDirectionDeg: number | null;
   windGustMps?: number | null;
@@ -141,4 +141,45 @@ export interface BriefRequestBody {
   locationName?: string;
   activity?: string;
   forceRefresh?: boolean;
+}
+
+// RocketRide pipeline trace
+export interface PipelineStage {
+  id: string;
+  name: string;
+  label: string;
+  status: "pending" | "running" | "done" | "error";
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  summary?: string;
+  inputPreview?: unknown;
+  outputPreview?: unknown;
+}
+
+export interface PipelineTrace {
+  pipelineName: string;
+  runId: string;
+  startedAt: string;
+  endedAt?: string;
+  totalDurationMs?: number;
+  stages: PipelineStage[];
+}
+
+export interface XTraceMemoryFact {
+  fact: string;
+  metadata?: Record<string, unknown>;
+  timestamp?: string;
+}
+
+export interface DeltaReport {
+  riskLevelDelta: string | null;
+  aqiCategoryDelta: string | null;
+  pm25Delta: number | null;
+  nearestFireDistanceDelta: number | null;
+  activeFireCountDelta: number | null;
+  windDirectionDelta: number | null;
+  windSpeedDelta: number | null;
+  plumeScoreDelta: number | null;
+  summary: string;
 }

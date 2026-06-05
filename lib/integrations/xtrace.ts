@@ -35,39 +35,44 @@ function isAvailable(): boolean {
   return !!config.xtraceApiKey;
 }
 
+function localMemoryQuery(ownerType: "user" | "group", id: string, query: string): string[] {
+  const key = memKey(ownerType, id);
+  const term = query.toLowerCase().split(" ")[0];
+  return (memMemory[key] ?? [])
+    .filter(m => !term || m.fact.toLowerCase().includes(term))
+    .map(m => m.fact);
+}
+
 export async function getUserMemory(userId: string, query: string): Promise<string[]> {
-  if (!isAvailable()) {
-    const key = memKey("user", userId);
-    return (memMemory[key] ?? [])
-      .filter(m => m.fact.toLowerCase().includes(query.toLowerCase().split(" ")[0]))
-      .map(m => m.fact);
-  }
+  const local = localMemoryQuery("user", userId, query);
+  if (!isAvailable()) return local;
   try {
     const result = await xtFetch(`/memory/query`, {
       method: "POST",
       body: JSON.stringify({ owner_type: "user", owner_id: userId, app_id: config.xtraceAppId, query, limit: 5 }),
     }) as { facts?: string[] };
-    return result.facts ?? [];
+    const remote = result.facts ?? [];
+    // merge: remote first, then any local facts not already present
+    const seen = new Set(remote);
+    return [...remote, ...local.filter(f => !seen.has(f))].slice(0, 8);
   } catch {
-    return [];
+    return local;
   }
 }
 
 export async function getGroupMemory(groupId: string, query: string): Promise<string[]> {
-  if (!isAvailable()) {
-    const key = memKey("group", groupId);
-    return (memMemory[key] ?? [])
-      .filter(m => m.fact.toLowerCase().includes(query.toLowerCase().split(" ")[0]))
-      .map(m => m.fact);
-  }
+  const local = localMemoryQuery("group", groupId, query);
+  if (!isAvailable()) return local;
   try {
     const result = await xtFetch(`/memory/query`, {
       method: "POST",
       body: JSON.stringify({ owner_type: "group", owner_id: groupId, app_id: config.xtraceAppId, query, limit: 5 }),
     }) as { facts?: string[] };
-    return result.facts ?? [];
+    const remote = result.facts ?? [];
+    const seen = new Set(remote);
+    return [...remote, ...local.filter(f => !seen.has(f))].slice(0, 8);
   } catch {
-    return [];
+    return local;
   }
 }
 
@@ -173,7 +178,19 @@ export async function getRecentMemory(
   limit = 10
 ): Promise<string[]> {
   const key = memKey(ownerType, ownerId);
-  return (memMemory[key] ?? []).slice(-limit).map(m => m.fact);
+  const local = (memMemory[key] ?? []).slice(-limit).map(m => m.fact);
+  if (!isAvailable()) return local;
+  try {
+    const result = await xtFetch(`/memory/recent`, {
+      method: "POST",
+      body: JSON.stringify({ owner_type: ownerType, owner_id: ownerId, app_id: config.xtraceAppId, limit }),
+    }) as { facts?: string[] };
+    const remote = result.facts ?? [];
+    const seen = new Set(remote);
+    return [...remote, ...local.filter(f => !seen.has(f))].slice(0, limit);
+  } catch {
+    return local;
+  }
 }
 
 export { isAvailable as isXtraceAvailable, memMemory as _memMemory };

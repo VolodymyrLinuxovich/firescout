@@ -15,10 +15,17 @@ export const config = {
   xtraceApiKey: process.env.XTRACE_API_KEY ?? "",
   xtraceAppId: process.env.XTRACE_APP_ID ?? "firescout",
   photonApiKey: process.env.PHOTON_API_KEY ?? "",
+  photonProjectId: process.env.PHOTON_PROJECT_ID ?? "",
+  photonProjectSecret: process.env.PHOTON_PROJECT_SECRET ?? "",
   photonWebhookSecret: process.env.PHOTON_WEBHOOK_SECRET ?? "",
+  imessageNumber: process.env.IMESSAGE_NUMBER ?? process.env.WHATSAPP_NUMBER ?? "+13417669597",
+  whatsappNumber: process.env.WHATSAPP_NUMBER ?? "",
+  whatsappApiKey: process.env.WHATSAPP_APIKEY ?? "",
+  loopMessageApiKey: process.env.LOOPMESSAGE_API_KEY ?? "",
   nwsUserAgent: process.env.NWS_USER_AGENT ?? "FireScout Hackathon [contact@example.com]",
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   mapboxToken: process.env.MAPBOX_TOKEN ?? "",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
 } as const;
 
 export function integrationStatus() {

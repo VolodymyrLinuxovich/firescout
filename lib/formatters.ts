@@ -1,3 +1,5 @@
+import { extractLocationFromText } from "./geocode";
+
 export interface IntentResult {
   intent: string;
   entities: Record<string, string>;
@@ -5,16 +7,11 @@ export interface IntentResult {
 
 export function classifyIntent(text: string): IntentResult {
   const lower = text.toLowerCase();
-  const entities: Record<string, string> = {};
+  const entities: Record<string, string> = { query: text };
 
-  // Extract location hints
-  const locationWords = ["berkeley", "oakland", "san francisco", "joshua tree", "mojave", "los angeles", "sacramento"];
-  for (const loc of locationWords) {
-    if (lower.includes(loc)) {
-      entities.location = loc.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      break;
-    }
-  }
+  // Extract location using full global geocoder list
+  const loc = extractLocationFromText(text);
+  if (loc) entities.location = loc;
 
   // Extract activity hints
   if (lower.includes("run") || lower.includes("exercise") || lower.includes("jog")) entities.activity = "running";

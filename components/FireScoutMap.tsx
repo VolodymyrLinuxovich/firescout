@@ -12,26 +12,27 @@ interface FireScoutMapProps {
   airQuality?: AirQualityObservation | null;
   satelliteLayer?: SatelliteLayerConfig | null;
   riskLevel?: string;
+  compact?: boolean;
 }
 
 export default function FireScoutMap({
   userLat, userLon, locationName,
   fires = [], wind = null, plumeGeoJson = null,
   airQuality = null, satelliteLayer = null, riskLevel = "WATCH",
+  compact = false,
 }: FireScoutMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<unknown>(null);
   const [showSatellite, setShowSatellite] = useState(false);
-  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || leafletMapRef.current) return;
+    let alive = true;
 
-    let isMounted = true;
     import("leaflet").then((L) => {
-      if (!isMounted || !mapRef.current) return;
+      if (!alive || !mapRef.current) return;
 
-      // Fix Leaflet default icon path in webpack
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
       L.Icon.Default.mergeOptions({
@@ -40,17 +41,21 @@ export default function FireScoutMap({
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
 
-      const map = L.map(mapRef.current!).setView([userLat, userLon], 9);
+      const map = L.map(mapRef.current!, { zoomControl: true, attributionControl: true }).setView([userLat, userLon], 9);
       leafletMapRef.current = map;
 
-      // Base tile layer
-      const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
-        maxZoom: 18,
-      });
-      osm.addTo(map);
+      // Dark tactical basemap (CartoDB Dark Matter)
+      const darkBase = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution: '© <a href="https://carto.com">CARTO</a> | © <a href="https://openstreetmap.org">OSM</a>',
+          maxZoom: 18,
+          subdomains: "abcd",
+        }
+      );
+      darkBase.addTo(map);
 
-      // NASA GIBS satellite layer (optional)
+      // NASA GIBS satellite layer (optional toggle)
       if (satelliteLayer) {
         const nasaTile = L.tileLayer(satelliteLayer.tileUrlTemplate, {
           attribution: satelliteLayer.attribution,
@@ -58,102 +63,99 @@ export default function FireScoutMap({
           maxZoom: 9,
           errorTileUrl: "",
         });
-        if (showSatellite) nasaTile.addTo(map);
         (map as unknown as Record<string, unknown>)._nasaLayer = nasaTile;
       }
 
-      // User location marker (star)
-      const userIcon = L.divIcon({
-        html: `<div style="font-size:28px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5))">⭐</div>`,
-        className: "",
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
-      });
-      L.marker([userLat, userLon], { icon: userIcon })
-        .bindPopup(`<b>${locationName}</b><br>Your monitored location`)
-        .addTo(map);
-
-      // AQI badge near user
-      if (airQuality?.aqi != null) {
-        const aqiColors: Record<string, string> = {
-          Good: "#16a34a", Moderate: "#ca8a04",
-          "Unhealthy for Sensitive Groups": "#ea580c",
-          Unhealthy: "#dc2626", "Very Unhealthy": "#9333ea", Hazardous: "#7f1d1d",
-        };
-        const aqiColor = aqiColors[airQuality.category ?? ""] ?? "#ca8a04";
-        const aqiIcon = L.divIcon({
-          html: `<div style="background:${aqiColor};color:#fff;padding:4px 8px;border-radius:6px;font-weight:700;font-size:12px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.3)">AQI ${airQuality.aqi} · ${airQuality.category}</div>`,
-          className: "",
-          iconSize: [120, 28],
-          iconAnchor: [-10, 0],
-        });
-        L.marker([userLat + 0.05, userLon + 0.1], { icon: aqiIcon, interactive: false }).addTo(map);
+      // Plume heatmap (render first so it's underneath)
+      if (plumeGeoJson) {
+        const features = plumeGeoJson.features as GeoJSON.Feature<GeoJSON.Point, { plumeScore: number }>[];
+        for (const feat of features) {
+          const score = feat.properties.plumeScore ?? 0;
+          if (score < 5) continue;
+          const [lon, lat] = feat.geometry.coordinates;
+          const radius = 1800 + score * 120;
+          const opacity = 0.06 + (score / 100) * 0.32;
+          const color = score > 70 ? "#EF4444" : score > 40 ? "#F97316" : "#FACC15";
+          L.circle([lat, lon], { radius, color: "transparent", fillColor: color, fillOpacity: opacity }).addTo(map);
+        }
       }
 
       // NASA FIRMS fire detections
       for (const fire of fires) {
         const conf = typeof fire.confidence === "string" ? fire.confidence.toLowerCase() : "";
-        const color = conf === "high" || conf === "h" ? "#ef4444" :
-                      conf === "nominal" || conf === "n" ? "#f97316" : "#fbbf24";
+        const color = conf === "high" || conf === "h" ? "#EF4444" : conf === "nominal" || conf === "n" ? "#F97316" : "#FACC15";
         const fireIcon = L.divIcon({
-          html: `<div style="width:12px;height:12px;background:${color};border:2px solid #7f1d1d;border-radius:50%;box-shadow:0 0 4px ${color}"></div>`,
+          html: `<div style="width:10px;height:10px;background:${color};border:1.5px solid rgba(255,255,255,0.6);border-radius:50%;box-shadow:0 0 6px ${color}88"></div>`,
           className: "",
-          iconSize: [12, 12],
-          iconAnchor: [6, 6],
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
         });
         L.marker([fire.lat, fire.lon], { icon: fireIcon })
-          .bindPopup(`
-            <b>NASA FIRMS Fire Detection</b><br>
+          .bindPopup(`<div style="background:#111;color:#F8FAFC;padding:8px 10px;border-radius:6px;font-size:12px;min-width:160px">
+            <b style="color:#F97316">NASA FIRMS Detection</b><br>
             Source: ${fire.source}<br>
-            ${fire.frp ? `FRP: ${fire.frp} MW<br>` : ""}
-            ${fire.brightness ? `Brightness: ${fire.brightness} K<br>` : ""}
+            ${fire.frp ? `FRP: <b>${fire.frp}</b> MW<br>` : ""}
             Confidence: ${fire.confidence}<br>
-            ${fire.distanceKm ? `Distance: ${fire.distanceKm.toFixed(0)} km` : ""}
-          `)
+            ${fire.distanceKm ? `Distance: <b>${fire.distanceKm.toFixed(0)} km</b>` : ""}
+            <hr style="border-color:#263241;margin:4px 0">
+            <small style="color:#94A3B8">Thermal anomaly detection.<br>Not a fire perimeter.</small>
+          </div>`, { className: "firescout-popup" })
           .addTo(map);
       }
 
-      // Wind arrow — shows SMOKE TRANSPORT direction (wind FROM + 180)
+      // User location marker
+      const userIcon = L.divIcon({
+        html: `<div style="position:relative">
+          <div style="width:18px;height:18px;background:#38BDF8;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(56,189,248,0.25)"></div>
+          <div style="position:absolute;top:-28px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(7,10,15,0.9);color:#38BDF8;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #263241">${locationName}</div>
+        </div>`,
+        className: "",
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      L.marker([userLat, userLon], { icon: userIcon })
+        .bindPopup(`<b style="color:#38BDF8">${locationName}</b><br>Monitored location`)
+        .addTo(map);
+
+      // AQI badge overlay
+      if (airQuality?.aqi != null) {
+        const aqiColors: Record<string, string> = {
+          "Good": "#22C55E", "Moderate": "#FACC15",
+          "Unhealthy for Sensitive Groups": "#F97316",
+          "Unhealthy": "#EF4444", "Very Unhealthy": "#A855F7", "Hazardous": "#7F1D1D",
+        };
+        const c = aqiColors[airQuality.category ?? ""] ?? "#F97316";
+        const aqiIcon = L.divIcon({
+          html: `<div style="background:rgba(7,10,15,0.9);border:1px solid ${c};color:${c};padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">AQI ${airQuality.aqi} · ${airQuality.category}</div>`,
+          className: "",
+          iconSize: [140, 26],
+          iconAnchor: [-8, 0],
+        });
+        L.marker([userLat + 0.04, userLon + 0.08], { icon: aqiIcon, interactive: false }).addTo(map);
+      }
+
+      // Wind / smoke transport arrow
       if (wind?.windDirectionDeg != null && wind?.windSpeedMps != null) {
         const smokeDir = (wind.windDirectionDeg + 180) % 360;
         const arrowIcon = L.divIcon({
           html: buildWindArrow(smokeDir, wind.windSpeedMps),
           className: "",
-          iconSize: [60, 60],
-          iconAnchor: [30, 30],
+          iconSize: [80, 80],
+          iconAnchor: [40, 40],
         });
-        L.marker([userLat - 0.1, userLon - 0.1], { icon: arrowIcon, interactive: false })
-          .bindTooltip(`Wind from ${wind.windDirectionDeg}° · Smoke moves toward ${smokeDir}° · ${wind.windSpeedMps.toFixed(1)} m/s`)
+        L.marker([userLat - 0.08, userLon - 0.05], { icon: arrowIcon, interactive: true })
+          .bindTooltip(`<b>Smoke transport</b><br>Wind FROM ${wind.windDirectionDeg}° at ${wind.windSpeedMps.toFixed(1)} m/s<br>Smoke moving TOWARD ${smokeDir}°<br><small>NWS wind data</small>`)
           .addTo(map);
       }
 
-      // Plume heatmap
-      if (plumeGeoJson) {
-        const features = plumeGeoJson.features as GeoJSON.Feature<GeoJSON.Point, { plumeScore: number }>[];
-        for (const feature of features) {
-          const score = feature.properties.plumeScore ?? 0;
-          if (score < 5) continue;
-          const [lon, lat] = feature.geometry.coordinates;
-          const radius = 2000 + score * 100;
-          const opacity = 0.08 + (score / 100) * 0.35;
-          const color = score > 70 ? "#dc2626" : score > 40 ? "#ea580c" : "#f97316";
-          L.circle([lat, lon], {
-            radius,
-            color: "transparent",
-            fillColor: color,
-            fillOpacity: opacity,
-          }).addTo(map);
-        }
-      }
-
-      setLeafletLoaded(true);
+      setReady(true);
     });
 
-    return () => { isMounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Toggle satellite layer
+  // Toggle satellite
   useEffect(() => {
     if (!leafletMapRef.current || !satelliteLayer) return;
     import("leaflet").then((L) => {
@@ -165,56 +167,60 @@ export default function FireScoutMap({
     });
   }, [showSatellite, satelliteLayer]);
 
+  const height = compact ? 380 : 520;
+
   return (
-    <div style={{ position: "relative" }}>
-      <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      />
-      <div
-        ref={mapRef}
-        style={{ width: "100%", height: 500, borderRadius: 12, overflow: "hidden", background: "#e8f0e8" }}
-      />
-      {leafletLoaded && (
-        <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", gap: 8 }}>
+    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #263241" }}>
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <div ref={mapRef} style={{ width: "100%", height, background: "#070A0F" }} />
+
+      {/* Map overlay labels */}
+      {ready && (
+        <>
+          <div style={{ position: "absolute", bottom: 36, left: 8, zIndex: 900, display: "flex", flexDirection: "column", gap: 3 }}>
+            {[
+              airQuality ? { label: `Measured AQI: AirNow`, color: "#38BDF8" } : null,
+              fires.length ? { label: `${fires.length} satellite fire detection${fires.length !== 1 ? "s" : ""}: NASA FIRMS`, color: "#F97316" } : null,
+              wind ? { label: `Wind: NWS`, color: "#94A3B8" } : null,
+              plumeGeoJson ? { label: `Plume: FireScout Gaussian model`, color: "#A78BFA" } : null,
+            ].filter(Boolean).map((item) => (
+              <div key={item!.label} style={{ background: "rgba(7,10,15,0.85)", border: `1px solid ${item!.color}44`, borderRadius: 4, padding: "2px 7px", fontSize: 10, color: item!.color, fontWeight: 600 }}>
+                {item!.label}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 900, background: "rgba(7,10,15,0.85)", border: "1px solid #EF444444", borderRadius: 4, padding: "2px 7px", fontSize: 9, color: "#EF4444", fontWeight: 600 }}>
+            DECISION SUPPORT ONLY · NOT AN EMERGENCY AUTHORITY
+          </div>
+
           {satelliteLayer && (
             <button
               onClick={() => setShowSatellite(s => !s)}
-              style={{
-                background: showSatellite ? "#1d4ed8" : "#fff",
-                color: showSatellite ? "#fff" : "#374151",
-                border: "1px solid #d1d5db",
-                borderRadius: 8,
-                padding: "6px 14px",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-              }}
+              style={{ position: "absolute", top: 8, right: 8, zIndex: 1000, background: showSatellite ? "#1D4ED8" : "rgba(7,10,15,0.9)", color: showSatellite ? "#fff" : "#94A3B8", border: "1px solid #263241", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
             >
-              {showSatellite ? "Hide Satellite" : "NASA Satellite"}
+              {showSatellite ? "HIDE SAT" : "NASA SAT"}
             </button>
           )}
-        </div>
+        </>
       )}
     </div>
   );
 }
 
 function buildWindArrow(directionDeg: number, speedMps: number): string {
-  const length = Math.min(40 + speedMps * 3, 55);
+  const len = Math.min(32 + speedMps * 2.5, 44);
   const rad = ((directionDeg - 90) * Math.PI) / 180;
-  const ex = 30 + Math.cos(rad) * length;
-  const ey = 30 + Math.sin(rad) * length;
-  return `
-    <svg width="60" height="60" style="overflow:visible">
-      <defs>
-        <marker id="ah" markerWidth="8" markerHeight="8" refX="4" refY="2" orient="auto">
-          <path d="M0,0 L0,4 L6,2 z" fill="#7c3aed" />
-        </marker>
-      </defs>
-      <line x1="30" y1="30" x2="${ex}" y2="${ey}"
-        stroke="#7c3aed" stroke-width="3" marker-end="url(#ah)" />
-      <text x="30" y="14" text-anchor="middle" font-size="9" fill="#7c3aed" font-weight="bold">SMOKE</text>
-    </svg>`;
+  const ex = 40 + Math.cos(rad) * len;
+  const ey = 40 + Math.sin(rad) * len;
+  return `<svg width="80" height="80" style="overflow:visible">
+    <defs>
+      <marker id="wah" markerWidth="7" markerHeight="7" refX="3.5" refY="1.75" orient="auto">
+        <path d="M0,0 L0,3.5 L5,1.75 z" fill="#A78BFA"/>
+      </marker>
+    </defs>
+    <circle cx="40" cy="40" r="3" fill="#A78BFA" opacity="0.8"/>
+    <line x1="40" y1="40" x2="${ex}" y2="${ey}" stroke="#A78BFA" stroke-width="2.5" marker-end="url(#wah)" opacity="0.9"/>
+    <text x="40" y="${ey + 12}" text-anchor="middle" font-size="8" fill="#A78BFA" font-weight="700">SMOKE</text>
+  </svg>`;
 }

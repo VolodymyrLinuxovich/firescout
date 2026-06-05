@@ -8,12 +8,15 @@ import type { RiskReport, AirQualityObservation, FireDetection, WindSnapshot, Pl
 
 const BASE_URL = "https://api.butterbase.com/v1";
 
+let _bbAvailable: boolean | null = null;
+
 async function bbFetch(path: string, options?: RequestInit): Promise<unknown> {
   if (!config.butterbaseApiKey) {
     throw new Error("BUTTERBASE_API_KEY not set");
   }
   const resp = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    signal: AbortSignal.timeout(5000),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${config.butterbaseApiKey}`,
@@ -26,6 +29,23 @@ async function bbFetch(path: string, options?: RequestInit): Promise<unknown> {
     throw new Error(`Butterbase API error ${resp.status}: ${body}`);
   }
   return resp.json();
+}
+
+async function isReachable(): Promise<boolean> {
+  if (_bbAvailable === false) return false;
+  if (!config.butterbaseApiKey) return false;
+  try {
+    await fetch(`${BASE_URL}/health`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(3000),
+      headers: { Authorization: `Bearer ${config.butterbaseApiKey}` },
+    });
+    _bbAvailable = true;
+    return true;
+  } catch {
+    _bbAvailable = false;
+    return false;
+  }
 }
 
 // ── In-memory fallback store (used when BUTTERBASE_API_KEY is missing) ──────
@@ -42,7 +62,7 @@ function memQuery(table: string, filter?: (r: Record<string, unknown>) => boolea
 }
 
 function isAvailable(): boolean {
-  return !!config.butterbaseApiKey;
+  return !!config.butterbaseApiKey && _bbAvailable !== false;
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────
@@ -51,16 +71,17 @@ export async function upsertUser(params: {
   platform: string;
   displayName?: string;
 }): Promise<Record<string, unknown>> {
-  if (!isAvailable()) {
-    const existing = memQuery("users", r => r.photon_user_id === params.photonUserId);
-    if (existing.length > 0) return existing[0];
-    return memInsert("users", { photon_user_id: params.photonUserId, platform: params.platform, display_name: params.displayName ?? null });
-  }
-  const result = await bbFetch("/users/upsert", {
-    method: "POST",
-    body: JSON.stringify({ photon_user_id: params.photonUserId, platform: params.platform, display_name: params.displayName ?? null }),
-  });
-  return result as Record<string, unknown>;
+  const existing = memQuery("users", r => r.photon_user_id === params.photonUserId);
+  if (existing.length > 0) return existing[0];
+  const memRow = memInsert("users", { photon_user_id: params.photonUserId, platform: params.platform, display_name: params.displayName ?? null });
+  if (!isAvailable()) return memRow;
+  try {
+    const result = await bbFetch("/users/upsert", {
+      method: "POST",
+      body: JSON.stringify({ photon_user_id: params.photonUserId, platform: params.platform, display_name: params.displayName ?? null }),
+    });
+    return result as Record<string, unknown>;
+  } catch { _bbAvailable = false; return memRow; }
 }
 
 // ── Locations ────────────────────────────────────────────────────────────────
@@ -81,15 +102,22 @@ export async function saveLocation(params: {
     radius_km: params.radiusKm ?? 150,
     is_active: true,
   };
-  if (!isAvailable()) return memInsert("locations", row);
-  return await bbFetch("/locations", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("locations", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/locations", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 export async function getActiveLocations(ownerType: string, ownerId: string): Promise<Record<string, unknown>[]> {
   if (!isAvailable()) {
     return memQuery("locations", r => r.owner_type === ownerType && r.owner_id === ownerId && r.is_active !== false);
   }
-  return await bbFetch(`/locations?owner_type=${ownerType}&owner_id=${ownerId}&is_active=true`) as Record<string, unknown>[];
+  try {
+    return await bbFetch(`/locations?owner_type=${ownerType}&owner_id=${ownerId}&is_active=true`) as Record<string, unknown>[];
+  } catch {
+    _bbAvailable = false;
+    return memQuery("locations", r => r.owner_type === ownerType && r.owner_id === ownerId && r.is_active !== false);
+  }
 }
 
 // ── Air quality ───────────────────────────────────────────────────────────────
@@ -105,8 +133,10 @@ export async function saveAirQuality(locationId: string, obs: AirQualityObservat
     observed_at: obs.observedAt ?? null,
     raw_json: obs.raw,
   };
-  if (!isAvailable()) return memInsert("air_quality_observations", row);
-  return await bbFetch("/air-quality", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("air_quality_observations", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/air-quality", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 // ── Fire detections ───────────────────────────────────────────────────────────
@@ -126,8 +156,10 @@ export async function saveFireDetections(locationId: string, fires: FireDetectio
       distance_km: fire.distanceKm ?? null,
       raw_json: fire.raw,
     };
-    if (!isAvailable()) { memInsert("fire_detections", row); continue; }
-    await bbFetch("/fire-detections", { method: "POST", body: JSON.stringify(row) });
+    memInsert("fire_detections", row);
+    if (!isAvailable()) continue;
+    try { await bbFetch("/fire-detections", { method: "POST", body: JSON.stringify(row) }); }
+    catch { _bbAvailable = false; }
   }
 }
 
@@ -142,8 +174,10 @@ export async function saveWind(locationId: string, wind: WindSnapshot): Promise<
     valid_time: wind.validTime ?? null,
     raw_json: wind.raw,
   };
-  if (!isAvailable()) return memInsert("wind_snapshots", row);
-  return await bbFetch("/wind", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("wind_snapshots", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/wind", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 // ── Plume model runs ──────────────────────────────────────────────────────────
@@ -158,8 +192,10 @@ export async function savePlumeRun(locationId: string, plume: PlumeModelRun): Pr
     plume_geojson: plume.plumeGeoJson,
     grid_bounds: plume.metadata,
   };
-  if (!isAvailable()) return memInsert("plume_model_runs", row);
-  return await bbFetch("/plume-runs", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("plume_model_runs", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/plume-runs", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 // ── Risk reports ──────────────────────────────────────────────────────────────
@@ -181,8 +217,10 @@ export async function saveRiskReport(
     confidence: report.confidence,
     sources_used: report.sourcesUsed,
   };
-  if (!isAvailable()) return memInsert("risk_reports", row);
-  return await bbFetch("/risk-reports", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("risk_reports", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/risk-reports", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 export async function getLatestReport(
@@ -201,17 +239,31 @@ export async function getLatestReport(
       new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime()
     )[0];
   }
-  const params = new URLSearchParams({ owner_type: ownerType, owner_id: ownerId, limit: "1" });
-  if (locationId) params.set("location_id", locationId);
-  const results = await bbFetch(`/risk-reports?${params}`) as Record<string, unknown>[];
-  return results?.[0] ?? null;
+  const queryParams = new URLSearchParams({ owner_type: ownerType, owner_id: ownerId, limit: "1" });
+  if (locationId) queryParams.set("location_id", locationId);
+  try {
+    const results = await bbFetch(`/risk-reports?${queryParams}`) as Record<string, unknown>[];
+    return results?.[0] ?? null;
+  } catch {
+    _bbAvailable = false;
+    const all = memQuery("risk_reports", r =>
+      r.owner_type === ownerType &&
+      r.owner_id === ownerId &&
+      (!locationId || r.location_id === locationId)
+    );
+    if (!all.length) return null;
+    return all.sort((a, b) =>
+      new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime()
+    )[0];
+  }
 }
 
 export async function getReportById(reportId: string): Promise<Record<string, unknown> | null> {
   if (!isAvailable()) {
     return memQuery("risk_reports", r => r.id === reportId)?.[0] ?? null;
   }
-  return await bbFetch(`/risk-reports/${reportId}`) as Record<string, unknown>;
+  try { return await bbFetch(`/risk-reports/${reportId}`) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memQuery("risk_reports", r => r.id === reportId)?.[0] ?? null; }
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -231,8 +283,10 @@ export async function saveMessage(params: {
     outbound_text: params.outboundText ?? null,
     report_id: params.reportId ?? null,
   };
-  if (!isAvailable()) return memInsert("messages", row);
-  return await bbFetch("/messages", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("messages", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/messages", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
 }
 
 // ── Map artifacts ─────────────────────────────────────────────────────────────
@@ -250,8 +304,35 @@ export async function saveMapArtifact(params: {
     geojson_url: params.geojsonUrl ?? null,
     satellite_layer_used: params.satelliteLayerUsed ?? null,
   };
-  if (!isAvailable()) return memInsert("map_artifacts", row);
-  return await bbFetch("/map-artifacts", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>;
+  const memRow = memInsert("map_artifacts", row);
+  if (!isAvailable()) return memRow;
+  try { return await bbFetch("/map-artifacts", { method: "POST", body: JSON.stringify(row) }) as Record<string, unknown>; }
+  catch { _bbAvailable = false; return memRow; }
+}
+
+// ── RocketRide traces ─────────────────────────────────────────────────────────
+export async function saveRocketRideTrace(runId: string, trace: unknown): Promise<void> {
+  const row = { run_id: runId, trace_json: trace };
+  memInsert("rocketride_traces", row);
+  if (!isAvailable()) return;
+  try { await bbFetch("/rocketride-traces", { method: "POST", body: JSON.stringify(row) }); }
+  catch { _bbAvailable = false; }
+}
+
+export async function getLatestTrace(ownerId: string): Promise<Record<string, unknown> | null> {
+  if (!isAvailable()) {
+    const all = memQuery("rocketride_traces");
+    if (!all.length) return null;
+    return all[all.length - 1];
+  }
+  try {
+    const results = await bbFetch(`/rocketride-traces?owner_id=${ownerId}&limit=1`) as Record<string, unknown>[];
+    return results?.[0] ?? null;
+  } catch {
+    _bbAvailable = false;
+    const all = memQuery("rocketride_traces");
+    return all.length ? all[all.length - 1] : null;
+  }
 }
 
 export { isAvailable as isButterbaseAvailable, memStore as _memStore };
