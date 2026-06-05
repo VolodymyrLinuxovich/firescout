@@ -1,0 +1,60 @@
+{
+  "name": "wind_plume_model",
+  "version": "1.0.0",
+  "description": "Computes an explainable Gaussian plume smoke transport estimate. NOT an official atmospheric forecast.",
+  "label": "Explainable wind-based plume estimate",
+  "input": {
+    "lat": "number — user location",
+    "lon": "number — user location",
+    "fires": "FireDetection[] — from NASA FIRMS",
+    "windSpeedMps": "number",
+    "windDirectionDeg": "number — direction wind comes FROM (meteorological convention)"
+  },
+  "output": {
+    "plumeGeoJson": "GeoJSON.FeatureCollection — grid cells with plumeScore 0-100",
+    "maxPlumeScore": "number",
+    "plumeAtUserScore": "number — interpolated score at user location",
+    "modelMetadata": {
+      "note": "Satellite active-fire detections are point/thermal anomaly detections, not complete fire perimeter maps.",
+      "smokeTransportDirection": "number — windDirectionDeg + 180",
+      "gridN": "number",
+      "gridRadiusKm": "number"
+    }
+  },
+  "steps": [
+    {
+      "id": "build_grid",
+      "type": "compute.grid",
+      "description": "Build local grid (40x40 default) around user location, radius 100km",
+      "params": {
+        "gridN": 40,
+        "radiusKm": 100
+      }
+    },
+    {
+      "id": "compute_plume",
+      "type": "compute.gaussian_plume",
+      "description": "For each grid cell and each fire detection, compute Gaussian plume concentration. Wind direction rotates the coordinate system. Only downwind cells receive contribution.",
+      "equation": "C(x,y) = Q/(2πuσyσz) * exp(-y²/(2σy²)) * [exp(-(z-H)²/(2σz²)) + exp(-(z+H)²/(2σz²))]",
+      "params": {
+        "effectiveHeight_m": 100,
+        "receptorHeight_m": 2,
+        "windFloor_mps": 1.0,
+        "sigmaY": "max(50, 0.22 * x * (1 + 0.0001*x)^-0.5)",
+        "sigmaZ": "max(20, 0.20 * x)"
+      }
+    },
+    {
+      "id": "normalize_scores",
+      "type": "compute.normalize",
+      "description": "Normalize summed plume concentrations to 0-100 score",
+      "method": "min_max"
+    },
+    {
+      "id": "to_geojson",
+      "type": "format.geojson",
+      "description": "Convert grid cells to GeoJSON points with plumeScore property",
+      "filter": "plumeScore > 2"
+    }
+  ]
+}

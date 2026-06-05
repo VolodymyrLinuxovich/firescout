@@ -1,0 +1,61 @@
+{
+  "name": "map_generation",
+  "version": "1.0.0",
+  "description": "Generates map layers, saves GeoJSON/artifacts to Butterbase, returns map URLs.",
+  "input": {
+    "reportId": "string",
+    "userLat": "number",
+    "userLon": "number",
+    "locationName": "string",
+    "fires": "FireDetection[]",
+    "wind": "WindSnapshot | null",
+    "plumeGeoJson": "GeoJSON.FeatureCollection | null",
+    "airQuality": "AirQualityObservation | null",
+    "satelliteDate": "string (YYYY-MM-DD)"
+  },
+  "output": {
+    "interactiveMapUrl": "string",
+    "staticPngUrl": "string | null",
+    "geojsonUrl": "string | null",
+    "layerSummary": "string"
+  },
+  "steps": [
+    {
+      "id": "user_marker_layer",
+      "type": "layer.marker",
+      "description": "Star marker at user location"
+    },
+    {
+      "id": "fire_detection_layer",
+      "type": "layer.points",
+      "description": "Fire detection dots colored by confidence/FRP (red=high, yellow=nominal, gray=low)"
+    },
+    {
+      "id": "wind_arrow_layer",
+      "type": "layer.arrow",
+      "description": "Arrow showing SMOKE TRANSPORT DIRECTION (windDirectionDeg + 180)"
+    },
+    {
+      "id": "plume_heatmap_layer",
+      "type": "layer.heatmap",
+      "description": "Semi-transparent orange/red polygons showing plume score field"
+    },
+    {
+      "id": "satellite_layer",
+      "type": "layer.tile",
+      "description": "NASA GIBS WMTS tile layer (MODIS True Color), optional toggle",
+      "provider": "NASA_GIBS",
+      "optional": true
+    },
+    {
+      "id": "aqi_badge_layer",
+      "type": "layer.badge",
+      "description": "AQI value and category badge near user location"
+    },
+    {
+      "id": "save_artifacts",
+      "type": "butterbase.storage.save",
+      "description": "Save plume GeoJSON to Butterbase storage, record map_artifacts row"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "name": "what_changed",
+  "version": "1.0.0",
+  "description": "Compares current data to previous report and generates a delta explanation.",
+  "input": {
+    "ownerType": "user | group",
+    "ownerId": "string",
+    "locationName": "string",
+    "lat": "number",
+    "lon": "number",
+    "activity": "string | null"
+  },
+  "output": {
+    "text": "string",
+    "deltas": {
+      "aqiCategoryDelta": "string",
+      "pm25Delta": "number | null",
+      "nearestFireDistanceDelta": "number | null",
+      "activeFireCountDelta": "number | null",
+      "windDirectionDelta": "number | null",
+      "windSpeedDelta": "number | null",
+      "plumeScoreDelta": "number | null",
+      "riskLevelDelta": "string | null"
+    },
+    "reportId": "string",
+    "mapUrl": "string"
+  },
+  "steps": [
+    {
+      "id": "load_previous_report",
+      "type": "butterbase.query",
+      "description": "Load most recent stored risk report from Butterbase",
+      "table": "risk_reports",
+      "order": "created_at DESC",
+      "limit": 1
+    },
+    {
+      "id": "read_xtrace_previous_belief",
+      "type": "xtrace.query",
+      "description": "Read XTrace memory of previous risk state and beliefs",
+      "query": "What was the previous FireScout risk state for this location? What prior smoke events occurred?"
+    },
+    {
+      "id": "ingest_current_data",
+      "type": "pipeline.run",
+      "pipeline": "official_data_ingestion"
+    },
+    {
+      "id": "run_plume_model",
+      "type": "pipeline.run",
+      "pipeline": "wind_plume_model"
+    },
+    {
+      "id": "compute_deltas",
+      "type": "compute.delta",
+      "description": "Compare current vs previous on: AQI category, PM2.5, nearest fire km, fire count, wind dir, wind speed, plume score, risk level"
+    },
+    {
+      "id": "generate_delta_explanation",
+      "type": "model.generate",
+      "description": "Generate concise plain-English delta explanation"
+    },
+    {
+      "id": "save_new_report",
+      "type": "butterbase.write",
+      "description": "Store the new report in Butterbase"
+    },
+    {
+      "id": "revise_xtrace_memory",
+      "type": "xtrace.revise",
+      "description": "Update XTrace memory with new risk state, contradicting previous belief if risk level changed",
+      "facts": [
+        "Last risk change: {{ locationName }} moved from {{ previousRiskLevel }} to {{ currentRiskLevel }} due to {{ mainDriver }}.",
+        "{{ whatChanged }}"
+      ]
+    }
+  ]
+}

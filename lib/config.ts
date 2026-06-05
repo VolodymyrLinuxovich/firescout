@@ -1,0 +1,35 @@
+function requireEnv(name: string): string {
+  const val = process.env[name];
+  if (!val && process.env.USE_MOCK_DATA !== "true") {
+    console.warn(`[FireScout] Missing env var: ${name} — set USE_MOCK_DATA=true to use mock data`);
+  }
+  return val ?? "";
+}
+
+export const config = {
+  useMockData: process.env.USE_MOCK_DATA === "true",
+  airnowApiKey: process.env.AIRNOW_API_KEY ?? "",
+  nasaFirmsMapKey: process.env.NASA_FIRMS_MAP_KEY ?? "",
+  butterbaseApiKey: process.env.BUTTERBASE_API_KEY ?? "",
+  butterbaseProjectId: process.env.BUTTERBASE_PROJECT_ID ?? "",
+  xtraceApiKey: process.env.XTRACE_API_KEY ?? "",
+  xtraceAppId: process.env.XTRACE_APP_ID ?? "firescout",
+  photonApiKey: process.env.PHOTON_API_KEY ?? "",
+  photonWebhookSecret: process.env.PHOTON_WEBHOOK_SECRET ?? "",
+  nwsUserAgent: process.env.NWS_USER_AGENT ?? "FireScout Hackathon [contact@example.com]",
+  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  mapboxToken: process.env.MAPBOX_TOKEN ?? "",
+} as const;
+
+export function integrationStatus() {
+  return {
+    butterbase: config.butterbaseApiKey ? "ok" : "missing",
+    xtrace: config.xtraceApiKey ? "ok" : "missing",
+    photon: config.photonApiKey ? "ok" : "missing",
+    rocketride: "fallback",
+    airnow: config.airnowApiKey ? "ok" : "missing",
+    firms: config.nasaFirmsMapKey ? "ok" : "missing",
+    nws: "ok",
+    mockMode: config.useMockData,
+  };
+}

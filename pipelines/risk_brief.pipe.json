@@ -1,0 +1,86 @@
+{
+  "name": "risk_brief",
+  "version": "1.0.0",
+  "description": "Full risk brief pipeline: read memory, fetch data, compute score, generate text, store results, write memory.",
+  "input": {
+    "ownerType": "user | group",
+    "ownerId": "string",
+    "locationName": "string",
+    "lat": "number",
+    "lon": "number",
+    "activity": "string | null",
+    "forceRefresh": "boolean"
+  },
+  "output": {
+    "reportId": "string",
+    "text": "string",
+    "riskLevel": "CLEAR | WATCH | ACT | CRITICAL",
+    "riskScore": "number",
+    "mapUrl": "string",
+    "imageUrl": "string | null",
+    "confidence": "High | Medium | Low"
+  },
+  "steps": [
+    {
+      "id": "read_xtrace_memory",
+      "type": "xtrace.query",
+      "description": "Read relevant user/group memory before answering",
+      "queries": [
+        "What locations does this user/group monitor for wildfire smoke?",
+        "What activities or alert preferences does this user care about?",
+        "What was the previous FireScout risk state for this location?"
+      ]
+    },
+    {
+      "id": "load_previous_report",
+      "type": "butterbase.query",
+      "description": "Load latest stored report for delta comparison",
+      "table": "risk_reports"
+    },
+    {
+      "id": "ingest_official_data",
+      "type": "pipeline.run",
+      "pipeline": "official_data_ingestion",
+      "description": "Fetch AirNow, FIRMS, NWS, CAL FIRE"
+    },
+    {
+      "id": "run_plume_model",
+      "type": "pipeline.run",
+      "pipeline": "wind_plume_model",
+      "description": "Compute Gaussian plume transport score"
+    },
+    {
+      "id": "compute_risk_score",
+      "type": "compute.risk_score",
+      "description": "Weighted risk score from AQI, plume, trend, fire proximity, activity"
+    },
+    {
+      "id": "generate_brief",
+      "type": "model.generate",
+      "description": "Generate human-friendly brief via Butterbase model gateway. Falls back to template.",
+      "system_prompt": "You are FireScout. Give short practical advice. Distinguish measured data from modeled estimates.",
+      "response_format": "json"
+    },
+    {
+      "id": "save_to_butterbase",
+      "type": "butterbase.write",
+      "description": "Store report, air quality observation, fire detections, wind snapshot, plume run"
+    },
+    {
+      "id": "generate_map",
+      "type": "pipeline.run",
+      "pipeline": "map_generation",
+      "description": "Generate map layers and return interactive map URL"
+    },
+    {
+      "id": "write_xtrace_memory",
+      "type": "xtrace.write",
+      "description": "Write updated risk state to memory after answering",
+      "facts": [
+        "User monitors {{ locationName }}.",
+        "Latest {{ locationName }} report was {{ riskLevel }} due to {{ mainDriver }}.",
+        "Last risk update: {{ whatChanged }}"
+      ]
+    }
+  ]
+}

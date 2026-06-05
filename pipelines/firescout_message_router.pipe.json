@@ -1,0 +1,50 @@
+{
+  "name": "firescout_message_router",
+  "version": "1.0.0",
+  "description": "Routes an incoming user message to the appropriate FireScout workflow based on intent and entities.",
+  "input": {
+    "userId": "string",
+    "groupId": "string | null",
+    "platform": "string",
+    "text": "string",
+    "timestamp": "string"
+  },
+  "output": {
+    "intent": "add_location | current_risk | show_map | what_changed | explain_science | update_preferences | daily_brief | unknown",
+    "entities": {
+      "location": "string | null",
+      "activity": "string | null"
+    },
+    "workflowName": "string"
+  },
+  "steps": [
+    {
+      "id": "read_xtrace_memory",
+      "type": "xtrace.query",
+      "description": "Read user or group memory to personalize intent classification",
+      "input": {
+        "ownerType": "{{ groupId ? 'group' : 'user' }}",
+        "ownerId": "{{ groupId ?? userId }}",
+        "query": "What locations does this user monitor? What activities do they care about?"
+      }
+    },
+    {
+      "id": "classify_intent",
+      "type": "model.classify",
+      "description": "Classify intent using rule-based classifier with optional LLM fallback",
+      "input": {
+        "text": "{{ text }}",
+        "memory": "{{ read_xtrace_memory.facts }}"
+      },
+      "fallback": "rule_based_classifier"
+    },
+    {
+      "id": "extract_entities",
+      "type": "entity.extract",
+      "description": "Extract location names and activity mentions from text",
+      "input": {
+        "text": "{{ text }}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "name": "official_data_ingestion",
+  "version": "1.0.0",
+  "description": "Fetches and normalizes official data from AirNow, NASA FIRMS, NWS, and optionally CAL FIRE.",
+  "input": {
+    "lat": "number",
+    "lon": "number",
+    "locationName": "string",
+    "radiusKm": "number (default 150)"
+  },
+  "output": {
+    "airQuality": "AirQualityObservation | null",
+    "fires": "FireDetection[]",
+    "wind": "WindSnapshot | null",
+    "incidents": "IncidentContext[]",
+    "sourceMetadata": {
+      "airQualityOk": "boolean",
+      "firesOk": "boolean",
+      "windOk": "boolean"
+    }
+  },
+  "steps": [
+    {
+      "id": "geocode",
+      "type": "geocode.resolve",
+      "description": "Resolve location name to lat/lon if not provided",
+      "input": { "name": "{{ locationName }}" },
+      "skip_if": "lat && lon"
+    },
+    {
+      "id": "fetch_airnow",
+      "type": "http.get",
+      "description": "Fetch current AQI / PM2.5 from AirNow API",
+      "source": "AirNow",
+      "endpoint": "https://www.airnowapi.org/aq/observation/latLong/current/",
+      "params": {
+        "format": "application/json",
+        "latitude": "{{ lat }}",
+        "longitude": "{{ lon }}",
+        "distance": 25,
+        "API_KEY": "{{ env.AIRNOW_API_KEY }}"
+      },
+      "normalize": "airnow_observation"
+    },
+    {
+      "id": "fetch_firms",
+      "type": "http.get",
+      "description": "Fetch active fire detections from NASA FIRMS (VIIRS then MODIS fallback)",
+      "source": "NASA_FIRMS",
+      "endpoint": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{{ env.NASA_FIRMS_MAP_KEY }}/VIIRS_SNPP_NRT/{{ bbox }}/1",
+      "normalize": "firms_fire_detection",
+      "fallback_source": "MODIS_NRT"
+    },
+    {
+      "id": "fetch_nws_wind",
+      "type": "http.get",
+      "description": "Fetch current wind speed and direction from NWS",
+      "source": "NWS",
+      "endpoint": "https://api.weather.gov/points/{{ lat }},{{ lon }}",
+      "follow": "properties.forecastHourly",
+      "normalize": "nws_wind_snapshot"
+    },
+    {
+      "id": "fetch_calfire",
+      "type": "http.get",
+      "description": "Optional: Fetch official incident context from CAL FIRE / NIFC IRWIN",
+      "source": "NIFC_IRWIN",
+      "optional": true,
+      "endpoint": "https://opendata.arcgis.com/datasets/5da472c6d27b4b67970acc7b5044c862_0.geojson"
+    }
+  ]
+}
