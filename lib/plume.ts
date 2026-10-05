@@ -88,9 +88,10 @@ export function runPlumeModel(
         const ey = dy - fdy;
 
         // Rotate into wind-aligned frame: +xDown = downwind
-        // smoke blows in smokeDirRad direction, so downwind axis is smokeDirRad
-        const xDown = ex * Math.cos(smokeDirRad) + ey * Math.sin(smokeDirRad);
-        const yCross = -ex * Math.sin(smokeDirRad) + ey * Math.cos(smokeDirRad);
+        // smokeDirRad is a compass bearing (0 = north, 90 = east), so the
+        // downwind unit vector in (east, north) is (sin, cos)
+        const xDown = ex * Math.sin(smokeDirRad) + ey * Math.cos(smokeDirRad);
+        const yCross = ex * Math.cos(smokeDirRad) - ey * Math.sin(smokeDirRad);
 
         totalC += plumeConcentration(Q, windSpeedMps, xDown, yCross);
       }
