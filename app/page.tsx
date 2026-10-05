@@ -71,24 +71,31 @@ const AGENT_CAPABILITIES = [
 
 const DEMO_LOCATIONS = ["Berkeley, CA", "Los Angeles", "Athens, Greece", "Delhi, India", "Sydney, Australia", "Amazon rainforest", "Kyiv, Ukraine"];
 
+// Seeded PRNG (mulberry32) so server and client render the same particles
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rand = seededRandom(42);
+const PARTICLES: Particle[] = Array.from({ length: 18 }, (_, i) => ({
+  id: i,
+  x: rand() * 100,
+  y: rand() * 100,
+  size: 2 + rand() * 4,
+  dur: 12 + rand() * 18,
+  delay: rand() * 10,
+  opacity: 0.04 + rand() * 0.1,
+}));
+
 export default function LandingPage() {
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const particles = PARTICLES;
   const [activeStep, setActiveStep] = useState(0);
   const [demoLoc, setDemoLoc] = useState(0);
-
-  useEffect(() => {
-    setParticles(
-      Array.from({ length: 18 }, (_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        size: 2 + Math.random() * 4,
-        dur: 12 + Math.random() * 18,
-        delay: Math.random() * 10,
-        opacity: 0.04 + Math.random() * 0.1,
-      }))
-    );
-  }, []);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -291,9 +298,9 @@ export default function LandingPage() {
           borderRadius: 10, padding: "16px 24px",
           fontSize: 14, color: "#94A3B8", fontStyle: "italic", lineHeight: 1.6,
         }}>
-          "FireScout is not a dashboard. It is a{" "}
+          &ldquo;FireScout is not a dashboard. It is a{" "}
           <span style={{ color: "#F97316", fontStyle: "normal", fontWeight: 700 }}>messaging-native</span>{" "}
-          wildfire smoke intelligence agent."
+          wildfire smoke intelligence agent.&rdquo;
         </div>
       </section>
 
