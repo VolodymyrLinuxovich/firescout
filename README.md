@@ -4,6 +4,7 @@
 
 **A global wildfire smoke intelligence agent** that monitors any location, runs RocketRide-powered AI workflows, remembers changing conditions with XTrace, persists reports through Butterbase, and delivers actionable smoke-risk updates through Photon/Spectrum messaging.
 
+[![CI](https://github.com/VolodymyrLinuxovich/firescout/actions/workflows/ci.yml/badge.svg)](https://github.com/VolodymyrLinuxovich/firescout/actions/workflows/ci.yml)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black)
@@ -434,9 +435,14 @@ npm run dev
 ## Tests / Demo Commands
 
 ```bash
+npm test               # unit tests (Vitest)
+npm run typecheck
+npm run lint
 npm run test:berkeley
 npm run seed
 ```
+
+`npm test` runs the unit tests in `tests/` for the plume model, risk scoring, geodesy helpers, geocoding and intent classification. CI runs lint, typecheck, tests and a production build on every push and pull request.
 
 `npm run seed` seeds demo data and memory for local testing.
 
