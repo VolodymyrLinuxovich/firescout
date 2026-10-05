@@ -9,7 +9,9 @@
     "lint": "eslint",
     "seed": "USE_MOCK_DATA=true npx tsx scripts/seedDemo.ts",
     "test:berkeley": "USE_MOCK_DATA=true npx tsx scripts/testBerkeley.ts",
-    "submit": "npx tsx scripts/submitHackathon.ts"
+    "submit": "npx tsx scripts/submitHackathon.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@butterbase/sdk": "^2.4.0",
@@ -32,6 +34,7 @@
     "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
