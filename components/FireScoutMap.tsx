@@ -13,6 +13,8 @@ interface FireScoutMapProps {
   satelliteLayer?: SatelliteLayerConfig | null;
   riskLevel?: string;
   compact?: boolean;
+  /** Fill the parent container instead of using a fixed height. */
+  fill?: boolean;
 }
 
 export default function FireScoutMap({
@@ -20,6 +22,7 @@ export default function FireScoutMap({
   fires = [], wind = null, plumeGeoJson = null,
   airQuality = null, satelliteLayer = null, riskLevel = "WATCH",
   compact = false,
+  fill = false,
 }: FireScoutMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<unknown>(null);
@@ -41,7 +44,8 @@ export default function FireScoutMap({
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
 
-      const map = L.map(mapRef.current!, { zoomControl: true, attributionControl: true }).setView([userLat, userLon], 9);
+      const map = L.map(mapRef.current!, { zoomControl: false, attributionControl: true }).setView([userLat, userLon], 9);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
       leafletMapRef.current = map;
 
       // Dark tactical basemap (Esri World Dark Gray, no API key needed)
@@ -150,7 +154,11 @@ export default function FireScoutMap({
       setReady(true);
     });
 
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      (leafletMapRef.current as { remove?: () => void } | null)?.remove?.();
+      leafletMapRef.current = null;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -166,10 +174,12 @@ export default function FireScoutMap({
     });
   }, [showSatellite, satelliteLayer]);
 
-  const height = compact ? 380 : 520;
+  const height = fill ? "100%" : compact ? 380 : 520;
 
   return (
-    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #263241" }}>
+    <div style={fill
+      ? { position: "relative", height: "100%", overflow: "hidden" }
+      : { position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #263241" }}>
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <div ref={mapRef} style={{ width: "100%", height, background: "#070A0F" }} />
 
