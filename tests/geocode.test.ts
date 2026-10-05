@@ -15,6 +15,17 @@ describe("geocode", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("matches a known place followed by a qualifier", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    expect(await geocode("Berkeley, California")).toMatchObject({ lat: 37.8715, lon: -122.273 });
+    expect(await geocode("Kyiv Ukraine")).toMatchObject({ lat: 50.4501, lon: 30.5234 });
+  });
+
+  it.each(["Lagos", "Sfax", "Lahore", "Santa Rosa"])("does not mistake %s for a known place", async (place) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+    expect(await geocode(place)).toBeNull();
+  });
+
   it("parses raw coordinates", async () => {
     vi.stubGlobal("fetch", vi.fn());
     expect(await geocode("37.8,-122.2")).toMatchObject({ lat: 37.8, lon: -122.2 });
@@ -42,5 +53,11 @@ describe("extractLocationFromText", () => {
   it("finds a known place and title cases it", () => {
     expect(extractLocationFromText("how is the air in san francisco today")).toBe("San Francisco");
     expect(extractLocationFromText("nothing here")).toBeNull();
+  });
+
+  it("matches whole words only", () => {
+    expect(extractLocationFromText("is the air bad in atlanta")).toBeNull();
+    expect(extractLocationFromText("is the air bad in la right now")).toBe("La");
+    expect(extractLocationFromText("smoke near sfax?")).toBeNull();
   });
 });

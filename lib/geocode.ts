@@ -85,9 +85,14 @@ export async function geocode(placeName: string): Promise<Location | null> {
     return { name: placeName, lat: coords.lat, lon: coords.lon, radiusKm: 150 };
   }
 
-  // Partial match (e.g. "Athens" matches "athens, greece")
+  // Partial match on whole words only (e.g. "Athens" matches "athens, greece",
+  // "Berkeley California" matches "berkeley"). Two-letter aliases like "la" and
+  // "sf" only match exactly, so "Lagos" and "Sfax" are not taken for LA or SF.
   for (const [k, v] of Object.entries(KNOWN_PLACES)) {
-    if (k.startsWith(key) || key.startsWith(k.split(",")[0])) {
+    const base = k.split(",")[0];
+    const placeHasQualifier = k.startsWith(key + ",");
+    const queryHasQualifier = base.length > 2 && (key.startsWith(base + ",") || key.startsWith(base + " "));
+    if (placeHasQualifier || queryHasQualifier) {
       return { name: placeName, lat: v.lat, lon: v.lon, radiusKm: 150 };
     }
   }
@@ -131,7 +136,9 @@ export async function geocode(placeName: string): Promise<Location | null> {
 export function extractLocationFromText(text: string): string | null {
   const lower = text.toLowerCase();
   for (const place of Object.keys(KNOWN_PLACES)) {
-    if (lower.includes(place)) {
+    // Whole words only, so "atlanta" does not match "la"
+    const escaped = place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`\\b${escaped}\\b`).test(lower)) {
       return place.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
     }
   }
