@@ -325,7 +325,7 @@ export default function DemoPage() {
             display: "flex", alignItems: "center", gap: 8,
           }}>
             <span style={{ fontSize: 9, color: "#4B5563", fontWeight: 700, letterSpacing: "0.08em" }}>
-              TACTICAL MAP · CartoDB Dark + AirNow + NASA FIRMS + NWS + Gaussian Plume
+              TACTICAL MAP · Esri Dark Gray + AirNow + NASA FIRMS + NWS + Gaussian Plume
             </span>
             {loading && (
               <span style={{ marginLeft: "auto", fontSize: 9, color: "#22C55E", fontWeight: 700, animation: "running 1s infinite" }}>

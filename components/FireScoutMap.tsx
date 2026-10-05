@@ -44,13 +44,12 @@ export default function FireScoutMap({
       const map = L.map(mapRef.current!, { zoomControl: true, attributionControl: true }).setView([userLat, userLon], 9);
       leafletMapRef.current = map;
 
-      // Dark tactical basemap (CartoDB Dark Matter)
+      // Dark tactical basemap (Esri World Dark Gray, no API key needed)
       const darkBase = L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
         {
-          attribution: '© <a href="https://carto.com">CARTO</a> | © <a href="https://openstreetmap.org">OSM</a>',
-          maxZoom: 18,
-          subdomains: "abcd",
+          attribution: 'Tiles © <a href="https://www.esri.com">Esri</a> | Esri, HERE, Garmin, © OpenStreetMap contributors',
+          maxZoom: 16,
         }
       );
       darkBase.addTo(map);
