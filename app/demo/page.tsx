@@ -17,7 +17,7 @@ import type {
 
 const FireScoutMap = dynamic(() => import("@/components/FireScoutMap"), { ssr: false });
 
-type RightTab = "pipeline" | "photon" | "xtrace" | "model" | "provenance";
+type RightTab = "chat" | "pipeline" | "memory" | "model" | "sources" | "activity";
 
 interface PhotonMsg { platform: string; channelId: string; text: string; mapUrl?: string }
 
@@ -49,14 +49,9 @@ const SUGGESTED_LOCATIONS = [
   "Kyiv, Ukraine", "Amazon rainforest", "Cape Town",
 ];
 
-const AGENT_COMMANDS = [
-  { id: "seed",    label: "Seed Demo State",              color: "#F97316", desc: "Reset with prior CLEAR state + XTrace memory" },
-  { id: "analyze", label: "▶ Run RocketRide Analysis",    color: "#22C55E", desc: "12-stage pipeline → risk report" },
-  { id: "delta",   label: "What Changed?",                color: "#FACC15", desc: "Compare with previous XTrace memory" },
-  { id: "photon",  label: "💬 Photon Preview",            color: "#FACC15", desc: "Show prepared message delivery" },
-  { id: "xtrace",  label: "🧠 XTrace Memory",             color: "#A78BFA", desc: "Read persisted memory facts" },
-  { id: "map",     label: "Open Tactical Map",            color: "#94A3B8", desc: "Full-screen map in new tab" },
-];
+function ownerIdFor(place: string): string {
+  return `agent_${place.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}`;
+}
 
 function buildMapLayers(report: RiskReport): MapLayers {
   return {
@@ -72,6 +67,7 @@ function buildMapLayers(report: RiskReport): MapLayers {
 export default function DemoPage() {
   const [location, setLocation] = useState("Berkeley, CA");
   const [report, setReport] = useState<RiskReport | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
   const [pipelineTrace, setPipelineTrace] = useState<PipelineTraceType | null>(null);
   const [memoryFacts, setMemoryFacts] = useState<XTraceMemoryFact[]>([]);
   const [deltaReport, setDeltaReport] = useState<DeltaReport | null>(null);
@@ -79,11 +75,12 @@ export default function DemoPage() {
   const [loading, setLoading] = useState(false);
   const [seedStatus, setSeedStatus] = useState<"idle" | "seeded">("idle");
   const [isMock, setIsMock] = useState(false);
-  const [rightTab, setRightTab] = useState<RightTab>("pipeline");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>("chat");
   const [log, setLog] = useState<{ id: number; text: string; color?: string }[]>([]);
   const logIdRef = useRef(0);
 
-  const ownerId = `agent_${location.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12)}`;
+  const ownerId = ownerIdFor(location);
 
   const addLog = useCallback((text: string, color?: string) => {
     const id = ++logIdRef.current;
@@ -110,12 +107,16 @@ export default function DemoPage() {
     }
   }, [location, addLog]);
 
-  const handleAnalyze = useCallback(async () => {
+  const handleAnalyze = useCallback(async (target?: string) => {
+    const place = (target ?? location).trim();
+    if (!place) return;
+    const ownerId = ownerIdFor(place);
+    setLocation(place);
     setLoading(true);
     setPipelineTrace(null);
     setPhotonMsg(null);
     addLog(`▶ RocketRide: firescout_emergency_analysis`, "#22C55E");
-    addLog(`  Location: ${location} · Owner: ${ownerId}`, "#38BDF8");
+    addLog(`  Location: ${place} · Owner: ${ownerId}`, "#38BDF8");
     try {
       const res = await fetch("/api/brief", {
         method: "POST",
@@ -123,7 +124,7 @@ export default function DemoPage() {
         body: JSON.stringify({
           ownerType: "user",
           ownerId,
-          locationName: location,
+          locationName: place,
           activity: "outdoor",
           forceRefresh: true,
         }),
@@ -136,9 +137,9 @@ export default function DemoPage() {
       }
 
       if (data.report) setReport(data.report);
+      setReportId(data.reportId ?? data.report?.id ?? null);
       if (data.pipelineTrace) {
         setPipelineTrace(data.pipelineTrace);
-        setRightTab("pipeline");
         const dur = data.pipelineTrace.totalDurationMs;
         addLog(`✓ Pipeline complete · ${data.pipelineTrace.stages.length} stages · ${dur}ms`, "#22C55E");
       }
@@ -153,7 +154,6 @@ export default function DemoPage() {
       if (data.photonMessage) {
         setPhotonMsg(data.photonMessage);
         addLog(`✓ Photon: alert prepared → ${data.photonMessage.platform}/#${data.photonMessage.channelId}`, "#FACC15");
-        setRightTab("photon");
       }
       if (data.isMock) setIsMock(true);
 
@@ -168,295 +168,254 @@ export default function DemoPage() {
     } finally {
       setLoading(false);
     }
-  }, [location, ownerId, addLog]);
-
-  const handleCommand = useCallback(async (id: string) => {
-    switch (id) {
-      case "seed": return handleSeed();
-      case "analyze": return handleAnalyze();
-      case "delta":
-        if (deltaReport?.summary) {
-          addLog(`Δ Delta: ${deltaReport.summary}`, "#FACC15");
-        } else {
-          addLog("Run analysis first — XTrace needs a prior report to compare.", "#94A3B8");
-        }
-        break;
-      case "photon":
-        setRightTab("photon");
-        addLog("◉ Photon message panel", "#FACC15");
-        break;
-      case "xtrace":
-        setRightTab("xtrace");
-        addLog("◉ XTrace memory panel", "#A78BFA");
-        break;
-      case "map":
-        if (report?.id) window.open(`/map/${report.id}`, "_blank");
-        else addLog("Run analysis first to generate a map.", "#94A3B8");
-        break;
-    }
-  }, [deltaReport, report, handleSeed, handleAnalyze, addLog]);
+  }, [location, addLog]);
 
   const riskLevel = report?.riskLevel ?? "WATCH";
-  const rc = RISK_COLORS[riskLevel] ?? RISK_COLORS.WATCH;
   const mapLayers = report ? buildMapLayers(report) : null;
 
+  const tabs: { id: RightTab; label: string }[] = [
+    { id: "chat", label: "Chat" },
+    { id: "pipeline", label: "Pipeline" },
+    { id: "memory", label: "Memory" },
+    { id: "model", label: "Model" },
+    { id: "sources", label: "Sources" },
+    { id: "activity", label: "Activity" },
+  ];
+
+  const openDrawer = (tab: RightTab) => {
+    setRightTab(tab);
+    setDrawerOpen(true);
+  };
+
   return (
-    <div style={{
-      height: "100vh",
-      background: "#070A0F",
-      color: "#F8FAFC",
-      fontFamily: "'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-    }}>
+    <div className="fs-root">
       <style>{`
         @keyframes riskPulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
         @keyframes running { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .fs-root {
+          height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
+          background: #070A0F; color: #F8FAFC;
+          font-family: var(--font-geist-sans), system-ui, sans-serif;
+        }
+        .fs-header {
+          display: flex; align-items: center; gap: 16px; padding: 10px 20px;
+          background: #050709; border-bottom: 1px solid #1E293B; flex-shrink: 0;
+        }
+        .fs-search { display: flex; gap: 8px; flex: 1; max-width: 560px; min-width: 0; }
+        .fs-search input {
+          flex: 1; min-width: 0; background: #0F172A; border: 1px solid #263241; border-radius: 8px;
+          color: #F8FAFC; font-size: 14px; padding: 10px 14px; outline: none; font-family: inherit;
+        }
+        .fs-search input:focus { border-color: #38BDF8; }
+        .fs-btn {
+          border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600;
+          cursor: pointer; font-family: inherit; white-space: nowrap;
+        }
+        .fs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .fs-primary { background: #22C55E; color: #052E16; }
+        .fs-ghost { background: #0F172A; color: #CBD5E1; border: 1px solid #263241; }
+        .fs-ghost:hover { border-color: #475569; }
+        .fs-main { flex: 1; position: relative; display: flex; overflow: hidden; }
+        .fs-map { flex: 1; position: relative; min-width: 0; }
+        .fs-card {
+          position: absolute; top: 16px; left: 16px; z-index: 1100; width: 340px;
+          max-height: calc(100% - 96px); overflow-y: auto; padding: 12px;
+          background: rgba(10,13,18,0.94); border: 1px solid #1E293B; border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+        }
+        .fs-card-actions { display: flex; gap: 8px; margin: 4px 0 10px; }
+        .fs-card-actions .fs-btn { flex: 1; padding: 8px 10px; font-size: 13px; }
+        .fs-delta {
+          font-size: 13px; line-height: 1.5; color: #FDE68A; background: #42200655;
+          border: 1px solid #FACC1544; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
+        }
+        .fs-empty {
+          height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 14px; padding: 24px; text-align: center;
+        }
+        .fs-empty h1 { font-size: 26px; font-weight: 700; margin: 0; }
+        .fs-empty p { font-size: 15px; color: #94A3B8; margin: 0; max-width: 440px; line-height: 1.5; }
+        .fs-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 520px; }
+        .fs-chip {
+          background: #0F172A; border: 1px solid #263241; color: #CBD5E1; border-radius: 999px;
+          padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+        }
+        .fs-chip:hover { border-color: #38BDF8; color: #38BDF8; }
+        .fs-loading {
+          position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1150;
+          background: #0F172A; border: 1px solid #22C55E66; color: #86EFAC; border-radius: 999px;
+          padding: 6px 14px; font-size: 13px; animation: running 1.2s infinite;
+        }
+        .fs-drawer {
+          width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden;
+          background: #0A0D12; border-left: 1px solid #1E293B;
+        }
+        .fs-drawer-head { display: flex; align-items: center; padding: 8px 8px 0; gap: 0; overflow-x: auto; border-bottom: 1px solid #1E293B; flex-shrink: 0; }
+        .fs-tab {
+          background: none; border: none; border-bottom: 2px solid transparent; color: #64748B;
+          padding: 8px 9px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;
+        }
+        .fs-tab[aria-selected="true"] { color: #F8FAFC; border-bottom-color: #38BDF8; }
+        .fs-drawer-body { flex: 1; overflow-y: auto; padding: 14px; }
+        .fs-log { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 12px; line-height: 1.6; }
+        @media (max-width: 820px) {
+          .fs-header { flex-wrap: wrap; padding: 10px 16px; gap: 10px; }
+          .fs-search { order: 3; flex-basis: 100%; max-width: none; }
+          .fs-card { left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: 42%; }
+          .fs-drawer { position: absolute; inset: 0; width: auto; z-index: 1200; border-left: none; }
+          .fs-empty h1 { font-size: 22px; }
+        }
       `}</style>
 
-      {/* ═══ TOP STATUS BAR ═══ */}
-      <div style={{
-        height: 46, minHeight: 46,
-        background: "#050709",
-        borderBottom: "1px solid #1E293B",
-        display: "flex", alignItems: "center", gap: 10, padding: "0 14px",
-        flexShrink: 0,
-      }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 7, textDecoration: "none", flexShrink: 0 }}>
-          <Image src="/firescout-logo.svg" alt="" width={22} height={22} style={{ borderRadius: 5 }} />
-          <span style={{ fontWeight: 800, fontSize: 12, color: "#F8FAFC" }}>FireScout</span>
+      {/* Header: brand, one search box, details toggle */}
+      <header className="fs-header">
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", flexShrink: 0 }}>
+          <Image src="/firescout-logo.svg" alt="" width={26} height={26} style={{ borderRadius: 6 }} />
+          <span style={{ fontWeight: 700, fontSize: 16, color: "#F8FAFC" }}>FireScout</span>
         </Link>
 
-        <div style={{ width: 1, height: 18, background: "#1E293B", flexShrink: 0 }} />
-
-        {/* Global location input */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, maxWidth: 340, minWidth: 0 }}>
-          <span style={{ fontSize: 9, color: "#374151", flexShrink: 0 }}>LOCATION</span>
+        <form
+          className="fs-search"
+          onSubmit={e => { e.preventDefault(); handleAnalyze(); }}
+        >
           <input
             value={location}
             onChange={e => setLocation(e.target.value)}
-            placeholder="Any city, region, or lat/lon…"
-            style={{
-              background: "#0F172A",
-              border: "1px solid #263241",
-              borderRadius: 5,
-              color: "#F8FAFC",
-              fontSize: 11,
-              padding: "4px 10px",
-              outline: "none",
-              flex: 1,
-              fontFamily: "inherit",
-              minWidth: 0,
-            }}
+            placeholder="Search any city or region"
+            aria-label="Location"
           />
-        </div>
+          <button type="submit" className="fs-btn fs-primary" disabled={loading}>
+            {loading ? "Checking…" : "Check risk"}
+          </button>
+        </form>
 
-        {/* Suggested locations */}
-        <div style={{ display: "flex", gap: 4, overflowX: "auto", flexShrink: 0 }}>
-          {SUGGESTED_LOCATIONS.slice(0, 4).map(loc => (
-            <button
-              key={loc}
-              onClick={() => setLocation(loc)}
-              style={{
-                background: location === loc ? "#1E293B" : "transparent",
-                border: "1px solid " + (location === loc ? "#38BDF8" : "#1E293B"),
-                color: location === loc ? "#38BDF8" : "#374151",
-                borderRadius: 4, padding: "2px 8px", fontSize: 9, cursor: "pointer",
-                fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
-              }}
-            >
-              {loc}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ width: 1, height: 18, background: "#1E293B", flexShrink: 0 }} />
-
-        {/* Risk badge */}
-        <div style={{
-          background: rc.bg, border: `1px solid ${rc.border}`,
-          borderRadius: 4, padding: "2px 8px",
-          fontSize: 10, fontWeight: 800, color: rc.text, flexShrink: 0,
-        }}>
-          {riskLevel}{report ? ` · ${report.riskScore}` : ""}
-        </div>
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-          {isMock && <div style={{ fontSize: 8, color: "#FACC15", background: "#42200644", border: "1px solid #FACC1544", borderRadius: 3, padding: "2px 6px" }}>MOCK</div>}
-          {seedStatus === "seeded" && <div style={{ fontSize: 8, color: "#22C55E", background: "#05301644", border: "1px solid #22C55E44", borderRadius: 3, padding: "2px 6px" }}>SEEDED</div>}
-          {["AirNow", "NASA", "NWS"].map(src => (
-            <div key={src} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22C55E" }} />
-              <span style={{ fontSize: 8, color: "#374151" }}>{src}</span>
-            </div>
-          ))}
-          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#A78BFA" }} />
-            <span style={{ fontSize: 8, color: "#374151" }}>XTrace</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ MAIN 3-COLUMN LAYOUT ═══ */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-
-        {/* ─── LEFT: Risk Panel ─── */}
-        <div style={{
-          width: 255, minWidth: 255,
-          background: "#0A0D12",
-          borderRight: "1px solid #1E293B",
-          overflowY: "auto", padding: "10px", flexShrink: 0,
-        }}>
-          <RiskPanel
-            report={report}
-            locationName={report?.location.name ?? location}
-            loading={loading}
-            isMock={isMock}
-          />
-        </div>
-
-        {/* ─── CENTER: Tactical Map ─── */}
-        <div style={{ flex: 1, position: "relative", overflow: "hidden", minWidth: 0 }}>
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
-            background: "linear-gradient(to bottom, rgba(5,7,9,0.95) 0%, transparent 100%)",
-            padding: "8px 12px 20px",
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <span style={{ fontSize: 9, color: "#4B5563", fontWeight: 700, letterSpacing: "0.08em" }}>
-              TACTICAL MAP · Esri Dark Gray + AirNow + NASA FIRMS + NWS + Gaussian Plume
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {isMock && (
+            <span style={{ fontSize: 12, color: "#FACC15", border: "1px solid #FACC1544", borderRadius: 6, padding: "4px 8px" }}>
+              Sample data
             </span>
-            {loading && (
-              <span style={{ marginLeft: "auto", fontSize: 9, color: "#22C55E", fontWeight: 700, animation: "running 1s infinite" }}>
-                ◉ ANALYZING
-              </span>
-            )}
-          </div>
+          )}
+          <button
+            className="fs-btn fs-ghost"
+            onClick={() => setDrawerOpen(o => !o)}
+            aria-expanded={drawerOpen}
+          >
+            {drawerOpen ? "Hide details" : "Details"}
+          </button>
+        </div>
+      </header>
+
+      <div className="fs-main">
+        <div className="fs-map">
+          {loading && <div className="fs-loading">Analyzing {location}…</div>}
 
           {mapLayers ? (
-            <FireScoutMap
-              userLat={mapLayers.userLocation.lat}
-              userLon={mapLayers.userLocation.lon}
-              locationName={mapLayers.userLocation.name}
-              fires={mapLayers.fires}
-              wind={mapLayers.wind}
-              plumeGeoJson={mapLayers.plumeGeoJson}
-              airQuality={mapLayers.aqi}
-              satelliteLayer={mapLayers.satelliteLayer}
-              riskLevel={riskLevel}
-            />
+            <>
+              <FireScoutMap
+                key={reportId ?? `${mapLayers.userLocation.lat},${mapLayers.userLocation.lon}`}
+                fill
+                userLat={mapLayers.userLocation.lat}
+                userLon={mapLayers.userLocation.lon}
+                locationName={mapLayers.userLocation.name}
+                fires={mapLayers.fires}
+                wind={mapLayers.wind}
+                plumeGeoJson={mapLayers.plumeGeoJson}
+                airQuality={mapLayers.aqi}
+                satelliteLayer={mapLayers.satelliteLayer}
+                riskLevel={riskLevel}
+              />
+
+              {/* Floating risk summary */}
+              <aside className="fs-card" aria-label="Risk summary">
+                <div className="fs-card-actions">
+                  <button className="fs-btn fs-ghost" onClick={() => openDrawer("chat")}>Ask FireScout</button>
+                  {reportId && (
+                    <a className="fs-btn fs-ghost" href={`/map/${reportId}`} target="_blank" rel="noreferrer"
+                      style={{ textAlign: "center", textDecoration: "none" }}>
+                      Full map ↗
+                    </a>
+                  )}
+                </div>
+                {deltaReport?.summary && (
+                  <div className="fs-delta">
+                    <strong>Since last check:</strong> {deltaReport.summary}
+                  </div>
+                )}
+                <RiskPanel
+                  report={report}
+                  locationName={report?.location.name ?? location}
+                  loading={loading}
+                  isMock={isMock}
+                />
+              </aside>
+            </>
           ) : (
-            <div style={{
-              height: "100%", display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center", gap: 12, color: "#374151",
-            }}>
-              <div style={{ fontSize: 36, opacity: 0.2 }}>🌍</div>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>
-                {loading ? "Running analysis…" : "Run analysis to load global smoke map"}
+            <div className="fs-empty">
+              <div style={{ fontSize: 40 }}>🔥</div>
+              <h1>Check wildfire smoke risk anywhere</h1>
+              <p>
+                Search a place above or pick one below. FireScout pulls live fire, air quality and wind data,
+                estimates where the smoke is heading, and explains the risk in plain English.
+              </p>
+              <div className="fs-chips">
+                {SUGGESTED_LOCATIONS.map(loc => (
+                  <button key={loc} className="fs-chip" disabled={loading} onClick={() => handleAnalyze(loc)}>
+                    {loc}
+                  </button>
+                ))}
               </div>
-              <div style={{ fontSize: 10, color: "#263241" }}>{location}</div>
-              <button onClick={handleAnalyze} disabled={loading} style={{
-                background: "#22C55E", color: "#fff", border: "none",
-                borderRadius: 6, padding: "8px 20px", fontWeight: 700, fontSize: 11,
-                cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.5 : 1,
-                fontFamily: "inherit",
-              }}>
-                {loading ? "Running pipeline…" : "▶ Run RocketRide Analysis"}
-              </button>
             </div>
           )}
         </div>
 
-        {/* ─── RIGHT: Intelligence Panel ─── */}
-        <div style={{
-          width: 300, minWidth: 300,
-          background: "#0A0D12",
-          borderLeft: "1px solid #1E293B",
-          display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0,
-        }}>
-          {/* Tabs */}
-          <div style={{ display: "flex", borderBottom: "1px solid #1E293B", flexShrink: 0 }}>
-            {([
-              { id: "pipeline",   label: "PIPELINE",   color: "#22C55E" },
-              { id: "photon",     label: "PHOTON",     color: "#FACC15" },
-              { id: "xtrace",     label: "XTRACE",     color: "#A78BFA" },
-              { id: "model",      label: "MODEL",      color: "#A78BFA" },
-              { id: "provenance", label: "DATA",       color: "#38BDF8" },
-            ] as { id: RightTab; label: string; color: string }[]).map(t => (
-              <button key={t.id} onClick={() => setRightTab(t.id)} style={{
-                flex: 1, padding: "6px 2px",
-                background: rightTab === t.id ? "#111827" : "transparent",
-                border: "none",
-                borderBottom: rightTab === t.id ? `2px solid ${t.color}` : "2px solid transparent",
-                color: rightTab === t.id ? t.color : "#374151",
-                fontSize: 8, fontWeight: 700, letterSpacing: "0.06em",
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+        {/* Details drawer: chat, pipeline, memory, model, sources, activity */}
+        {drawerOpen && (
+          <section className="fs-drawer" aria-label="Details">
+            <div className="fs-drawer-head" role="tablist">
+              {tabs.map(t => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  className="fs-tab"
+                  aria-selected={rightTab === t.id}
+                  onClick={() => setRightTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Tab content */}
-          {rightTab === "photon" ? (
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-              <PhotonChat sessionId={ownerId} />
-            </div>
-          ) : (
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
-              {rightTab === "pipeline" && <PipelineTrace trace={pipelineTrace} />}
-              {rightTab === "xtrace" && <XTracePanel facts={memoryFacts} connected={memoryFacts.length > 0} />}
-              {rightTab === "model" && <ModelParamsCard report={report} />}
-              {rightTab === "provenance" && <DataProvenanceCard />}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ═══ COMMAND BAR ═══ */}
-      <div style={{ background: "#050709", borderTop: "1px solid #1E293B", flexShrink: 0 }}>
-        {/* Command buttons */}
-        <div style={{
-          display: "flex", gap: 6, padding: "7px 12px", overflowX: "auto",
-          borderBottom: "1px solid #0F1724",
-        }}>
-          {AGENT_COMMANDS.map(cmd => (
-            <button
-              key={cmd.id}
-              onClick={() => handleCommand(cmd.id)}
-              disabled={loading && cmd.id !== "photon" && cmd.id !== "xtrace"}
-              title={cmd.desc}
-              style={{
-                background: "#0F172A", border: `1px solid ${cmd.color}44`,
-                color: cmd.color, borderRadius: 5, padding: "5px 12px",
-                fontSize: 10, fontWeight: 700, cursor: "pointer",
-                opacity: (loading && cmd.id !== "photon" && cmd.id !== "xtrace") ? 0.4 : 1,
-                whiteSpace: "nowrap", fontFamily: "inherit", flexShrink: 0,
-              }}
-            >
-              {cmd.id === "analyze" && loading ? "◉ RUNNING PIPELINE…" : cmd.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Ops log */}
-        <div style={{
-          height: 60, overflowY: "auto",
-          padding: "4px 12px", display: "flex", flexDirection: "column", gap: 1,
-        }}>
-          {log.length === 0 ? (
-            <div style={{ fontSize: 9, color: "#374151", paddingTop: 2 }}>
-              FireScout Global Agent Console · Enter a location above, then click{" "}
-              <span style={{ color: "#F97316" }}>Seed Demo State</span> →{" "}
-              <span style={{ color: "#22C55E" }}>Run RocketRide Analysis</span>
-            </div>
-          ) : log.map(e => (
-            <div key={e.id} style={{ fontSize: 9, color: e.color ?? "#64748B", lineHeight: 1.4, whiteSpace: "nowrap" }}>
-              {e.text}
-            </div>
-          ))}
-        </div>
+            {rightTab === "chat" ? (
+              <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                <PhotonChat sessionId={ownerId} />
+              </div>
+            ) : (
+              <div className="fs-drawer-body">
+                {rightTab === "pipeline" && <PipelineTrace trace={pipelineTrace} loading={loading} />}
+                {rightTab === "memory" && <XTracePanel facts={memoryFacts} connected={memoryFacts.length > 0} />}
+                {rightTab === "model" && <ModelParamsCard report={report} />}
+                {rightTab === "sources" && <DataProvenanceCard />}
+                {rightTab === "activity" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button className="fs-btn fs-ghost" onClick={handleSeed} disabled={loading} style={{ fontSize: 13, padding: "8px 12px" }}>
+                        Reset demo memory
+                      </button>
+                      {seedStatus === "seeded" && <span style={{ fontSize: 12, color: "#22C55E" }}>Demo reset</span>}
+                    </div>
+                    <div className="fs-log">
+                      {log.length === 0 ? (
+                        <div style={{ color: "#64748B" }}>Nothing yet. Run a check to see each step here.</div>
+                      ) : log.map(e => (
+                        <div key={e.id} style={{ color: e.color ?? "#94A3B8" }}>{e.text}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

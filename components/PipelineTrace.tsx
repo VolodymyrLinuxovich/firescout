@@ -26,20 +26,20 @@ export default function PipelineTrace({ trace, loading }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ fontSize: 10, color: "#94A3B8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        <div style={{ fontSize: 12, color: "#94A3B8", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           RocketRide Pipeline
         </div>
         {trace && (
-          <div style={{ fontSize: 10, color: "#4B5563" }}>
+          <div style={{ fontSize: 12, color: "#4B5563" }}>
             {trace.totalDurationMs}ms · {trace.runId.slice(0, 12)}
           </div>
         )}
         {loading && (
-          <div style={{ fontSize: 10, color: "#38BDF8", animation: "pulse 1s infinite" }}>● RUNNING</div>
+          <div style={{ fontSize: 12, color: "#38BDF8", animation: "pulse 1s infinite" }}>● RUNNING</div>
         )}
       </div>
 
-      <div style={{ fontFamily: "monospace", fontSize: 10, background: "#070A0F", border: "1px solid #1E293B", borderRadius: 6, overflow: "hidden" }}>
+      <div style={{ fontFamily: "monospace", fontSize: 12, background: "#070A0F", border: "1px solid #1E293B", borderRadius: 6, overflow: "hidden" }}>
         <div style={{ padding: "6px 10px", background: "#0F172A", borderBottom: "1px solid #1E293B", display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ color: "#38BDF8", fontWeight: 700 }}>firescout_emergency_analysis</span>
           {trace && <span style={{ color: "#4B5563" }}>·</span>}
@@ -62,7 +62,7 @@ export default function PipelineTrace({ trace, loading }: Props) {
             >
               {/* connector line */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 1, flexShrink: 0 }}>
-                <div style={{ width: 14, height: 14, borderRadius: "50%", background: c.dot, border: `1.5px solid ${c.dot}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: stage.status === "pending" ? "#263241" : "#fff", fontWeight: 700, flexShrink: 0 }}>
+                <div style={{ width: 14, height: 14, borderRadius: "50%", background: c.dot, border: `1.5px solid ${c.dot}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: stage.status === "pending" ? "#263241" : "#fff", fontWeight: 700, flexShrink: 0 }}>
                   {STATUS_ICON[stage.status]}
                 </div>
                 {i < stages.length - 1 && (
@@ -76,11 +76,11 @@ export default function PipelineTrace({ trace, loading }: Props) {
                     {String(i + 1).padStart(2, "0")}. {stage.label}
                   </span>
                   {stage.durationMs !== undefined && (
-                    <span style={{ color: "#4B5563", fontSize: 9 }}>{stage.durationMs}ms</span>
+                    <span style={{ color: "#4B5563", fontSize: 11 }}>{stage.durationMs}ms</span>
                   )}
                 </div>
                 {stage.summary && (
-                  <div style={{ color: "#4B5563", fontSize: 9, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ color: "#4B5563", fontSize: 11, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     → {stage.summary}
                   </div>
                 )}
@@ -91,7 +91,7 @@ export default function PipelineTrace({ trace, loading }: Props) {
       </div>
 
       {trace && (
-        <div style={{ marginTop: 6, fontSize: 9, color: "#4B5563", display: "flex", gap: 12 }}>
+        <div style={{ marginTop: 6, fontSize: 11, color: "#4B5563", display: "flex", gap: 12 }}>
           <span>started {new Date(trace.startedAt).toLocaleTimeString()}</span>
           {trace.endedAt && <span>finished {new Date(trace.endedAt).toLocaleTimeString()}</span>}
           <span style={{ color: "#22C55E" }}>● RocketRide executor</span>
