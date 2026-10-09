@@ -66,36 +66,40 @@ export function runPlumeModel(
   const step = (GRID_RADIUS_KM * 2 * 1000) / GRID_N; // meters per cell
   const halfKm = GRID_RADIUS_KM * 1000;
 
+  // Fire offsets from the user in local meters, computed once
+  const sources = fires.map(fire => ({
+    Q: sourceStrength(fire),
+    ...latLonToMeters(fire.lat, fire.lon, userLat, userLon),
+  }));
+
+  // Total concentration at a point given in local meters from the user
+  const concentrationAt = (px: number, py: number): number => {
+    let totalC = 0;
+    for (const { Q, dx: fdx, dy: fdy } of sources) {
+      // Vector from fire to the point
+      const ex = px - fdx;
+      const ey = py - fdy;
+
+      // Rotate into wind-aligned frame: +xDown = downwind
+      // smokeDirRad is a compass bearing (0 = north, 90 = east), so the
+      // downwind unit vector in (east, north) is (sin, cos)
+      const xDown = ex * Math.sin(smokeDirRad) + ey * Math.cos(smokeDirRad);
+      const yCross = ex * Math.cos(smokeDirRad) - ey * Math.sin(smokeDirRad);
+
+      totalC += plumeConcentration(Q, windSpeedMps, xDown, yCross);
+    }
+    return totalC;
+  };
+
   // Build grid in local meters centered on user
-  const rawScores: number[][] = [];
   const cells: Array<{ lat: number; lon: number; score: number }> = [];
 
   for (let iy = 0; iy < GRID_N; iy++) {
-    rawScores.push(new Array(GRID_N).fill(0));
     for (let ix = 0; ix < GRID_N; ix++) {
       // Local meters offset from user center
       const dx = -halfKm + ix * step + step / 2;
       const dy = -halfKm + iy * step + step / 2;
-
-      let totalC = 0;
-      for (const fire of fires) {
-        const Q = sourceStrength(fire);
-        // Fire offset from user center
-        const { dx: fdx, dy: fdy } = latLonToMeters(fire.lat, fire.lon, userLat, userLon);
-
-        // Vector from fire to grid cell
-        const ex = dx - fdx;
-        const ey = dy - fdy;
-
-        // Rotate into wind-aligned frame: +xDown = downwind
-        // smokeDirRad is a compass bearing (0 = north, 90 = east), so the
-        // downwind unit vector in (east, north) is (sin, cos)
-        const xDown = ex * Math.sin(smokeDirRad) + ey * Math.cos(smokeDirRad);
-        const yCross = ex * Math.cos(smokeDirRad) - ey * Math.sin(smokeDirRad);
-
-        totalC += plumeConcentration(Q, windSpeedMps, xDown, yCross);
-      }
-      rawScores[iy][ix] = totalC;
+      const totalC = concentrationAt(dx, dy);
 
       // Convert grid cell center back to lat/lon
       const cellLat = userLat + dy / 110540;
@@ -104,14 +108,14 @@ export function runPlumeModel(
     }
   }
 
-  // Normalize 0-100
-  const maxRaw = Math.max(...cells.map(c => c.score), 1e-10);
-  const normalizedCells = cells.map(c => ({ ...c, score: (c.score / maxRaw) * 100 }));
+  // The grid has an even size, so no cell is centered on the user.
+  // Sample the plume at the user's exact position instead.
+  const userRaw = concentrationAt(0, 0);
 
-  // Score at user location = center cell
-  const centerIdx = Math.floor(GRID_N / 2);
-  const userCellIdx = centerIdx * GRID_N + centerIdx;
-  const plumeAtUserScore = normalizedCells[userCellIdx]?.score ?? 0;
+  // Normalize 0-100
+  const maxRaw = Math.max(...cells.map(c => c.score), userRaw, 1e-10);
+  const normalizedCells = cells.map(c => ({ ...c, score: (c.score / maxRaw) * 100 }));
+  const plumeAtUserScore = (userRaw / maxRaw) * 100;
 
   // Build GeoJSON FeatureCollection
   const features: GeoJSON.Feature[] = normalizedCells
