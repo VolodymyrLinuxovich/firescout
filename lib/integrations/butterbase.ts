@@ -31,23 +31,6 @@ async function bbFetch(path: string, options?: RequestInit): Promise<unknown> {
   return resp.json();
 }
 
-async function isReachable(): Promise<boolean> {
-  if (_bbAvailable === false) return false;
-  if (!config.butterbaseApiKey) return false;
-  try {
-    await fetch(`${BASE_URL}/health`, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(3000),
-      headers: { Authorization: `Bearer ${config.butterbaseApiKey}` },
-    });
-    _bbAvailable = true;
-    return true;
-  } catch {
-    _bbAvailable = false;
-    return false;
-  }
-}
-
 // ── In-memory fallback store (used when BUTTERBASE_API_KEY is missing) ──────
 const memStore: Record<string, Record<string, unknown>[]> = {};
 function memInsert(table: string, row: Record<string, unknown>): Record<string, unknown> {
