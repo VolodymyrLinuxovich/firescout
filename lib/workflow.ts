@@ -163,6 +163,32 @@ async function resolveLocation(
   return { loc, locationId };
 }
 
+// ── Data fetch with global fallbacks ─────────────────────────────────────────
+
+// AirNow is US-only → fall back to Open-Meteo globally
+async function fetchAirQualityWithFallback(
+  lat: number, lon: number
+): Promise<{ data: AirQualityObservation; source: string }> {
+  try {
+    const r = await fetchAirNowByLatLon(lat, lon);
+    if (r.aqi !== null) return { data: r, source: "AirNow" };
+  } catch { /* not US or API failure */ }
+  const r = await fetchOpenMeteoAirQuality(lat, lon);
+  return { data: r, source: "Open-Meteo" };
+}
+
+// NWS is US-only → fall back to Open-Meteo globally
+async function fetchWindWithFallback(
+  lat: number, lon: number
+): Promise<{ data: WindSnapshot; source: string }> {
+  try {
+    const r = await fetchNwsWind(lat, lon);
+    return { data: r, source: "NWS" };
+  } catch { /* not US or API failure */ }
+  const r = await fetchOpenMeteoWind(lat, lon);
+  return { data: r, source: "Open-Meteo" };
+}
+
 // ── Current risk (main pipeline) ──────────────────────────────────────────────
 
 export async function handleCurrentRisk(params: {
@@ -209,30 +235,10 @@ export async function handleCurrentRisk(params: {
   startStage(stages, "nasa_firms_active_fires");
   startStage(stages, "nws_wind_field");
 
-  // AirNow is US-only → fall back to Open-Meteo globally
-  async function fetchAQI(): Promise<{ data: AirQualityObservation; source: string }> {
-    try {
-      const r = await fetchAirNowByLatLon(loc.lat, loc.lon);
-      if (r.aqi !== null) return { data: r, source: "AirNow" };
-    } catch { /* not US or API failure */ }
-    const r = await fetchOpenMeteoAirQuality(loc.lat, loc.lon);
-    return { data: r, source: "Open-Meteo" };
-  }
-
-  // NWS is US-only → fall back to Open-Meteo globally
-  async function fetchWind(): Promise<{ data: WindSnapshot; source: string }> {
-    try {
-      const r = await fetchNwsWind(loc.lat, loc.lon);
-      return { data: r, source: "NWS" };
-    } catch { /* not US or API failure */ }
-    const r = await fetchOpenMeteoWind(loc.lat, loc.lon);
-    return { data: r, source: "Open-Meteo" };
-  }
-
   const [aqiResult, firesResult, windResult] = await Promise.allSettled([
-    fetchAQI(),
+    fetchAirQualityWithFallback(loc.lat, loc.lon),
     fetchFirmsActiveFires(loc.lat, loc.lon, loc.radiusKm),
-    fetchWind(),
+    fetchWindWithFallback(loc.lat, loc.lon),
   ]);
 
   const airQuality: AirQualityObservation | null =
@@ -448,14 +454,16 @@ export async function handleWhatChanged(params: { ownerType: string; ownerId: st
   const { loc } = resolved;
 
   const [airResult, firesResult, windResult] = await Promise.allSettled([
-    fetchAirNowByLatLon(loc.lat, loc.lon),
+    fetchAirQualityWithFallback(loc.lat, loc.lon),
     fetchFirmsActiveFires(loc.lat, loc.lon, loc.radiusKm),
-    fetchNwsWind(loc.lat, loc.lon),
+    fetchWindWithFallback(loc.lat, loc.lon),
   ]);
 
-  const airQuality = airResult.status === "fulfilled" ? airResult.value : null;
+  const airQuality = airResult.status === "fulfilled" ? airResult.value.data : null;
+  const aqiSource = airResult.status === "fulfilled" ? airResult.value.source : null;
   const fires = firesResult.status === "fulfilled" ? firesResult.value : [];
-  const wind = windResult.status === "fulfilled" ? windResult.value : null;
+  const wind = windResult.status === "fulfilled" ? windResult.value.data : null;
+  const windSource = windResult.status === "fulfilled" ? windResult.value.source : null;
 
   let plume = null;
   if (wind?.windSpeedMps != null && wind?.windDirectionDeg != null) {
@@ -475,7 +483,8 @@ export async function handleWhatChanged(params: { ownerType: string; ownerId: st
 
   const whatChanged = deltas.join(" | ") || "No significant changes detected.";
 
-  const sources = [airQuality ? "AirNow" : null, fires.length ? "NASA FIRMS" : null, wind ? "NWS" : null].filter(Boolean) as string[];
+  const sources = [aqiSource, fires.length ? "NASA FIRMS" : null, windSource]
+    .filter((s, i, all): s is string => s !== null && all.indexOf(s) === i);
 
   let reportId = `local_${Date.now()}`;
   try {
