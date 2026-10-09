@@ -20,7 +20,7 @@ interface FireScoutMapProps {
 export default function FireScoutMap({
   userLat, userLon, locationName,
   fires = [], wind = null, plumeGeoJson = null,
-  airQuality = null, satelliteLayer = null, riskLevel = "WATCH",
+  airQuality = null, satelliteLayer = null,
   compact = false,
   fill = false,
 }: FireScoutMapProps) {
@@ -36,7 +36,6 @@ export default function FireScoutMap({
     import("leaflet").then((L) => {
       if (!alive || !mapRef.current) return;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -165,9 +164,9 @@ export default function FireScoutMap({
   // Toggle satellite
   useEffect(() => {
     if (!leafletMapRef.current || !satelliteLayer) return;
-    import("leaflet").then((L) => {
-      const map = leafletMapRef.current as ReturnType<typeof L.map>;
-      const nasaLayer = (map as unknown as Record<string, unknown>)._nasaLayer as ReturnType<typeof L.tileLayer> | undefined;
+    import("leaflet").then(() => {
+      const map = leafletMapRef.current as import("leaflet").Map;
+      const nasaLayer = (map as unknown as Record<string, unknown>)._nasaLayer as import("leaflet").TileLayer | undefined;
       if (!nasaLayer) return;
       if (showSatellite) map.addLayer(nasaLayer);
       else map.removeLayer(nasaLayer);

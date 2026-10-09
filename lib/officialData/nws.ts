@@ -12,11 +12,6 @@ function mockWind(): WindSnapshot {
   };
 }
 
-// knots to m/s
-function knotsToMps(knots: number): number {
-  return knots * 0.514444;
-}
-
 export async function fetchNwsPointMetadata(lat: number, lon: number): Promise<Record<string, unknown>> {
   const url = `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`;
   const resp = await fetch(url, {
