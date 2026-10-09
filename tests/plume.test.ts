@@ -74,4 +74,19 @@ describe("runPlumeModel", () => {
     expect(Math.max(...scores)).toBe(100);
     expect(Math.min(...scores)).toBeGreaterThanOrEqual(0);
   });
+
+  it("samples the user score at the user's exact position", () => {
+    // Mirror images through the user. Both put the user 5 km straight
+    // downwind of the fire, so the score at the user must match.
+    const fromNorth = runPlumeModel(USER.lat, USER.lon, [fireAt(5, 0)], 5, 0);
+    const fromSouth = runPlumeModel(USER.lat, USER.lon, [fireAt(-5, 0)], 5, 180);
+    expect(fromNorth.plumeAtUserScore).toBeGreaterThan(0);
+    expect(fromNorth.plumeAtUserScore).toBe(fromSouth.plumeAtUserScore);
+  });
+
+  it("never reports a user score above 100", () => {
+    const run = runPlumeModel(USER.lat, USER.lon, [fireAt(-1, 0)], 5, 180);
+    expect(run.plumeAtUserScore).toBeLessThanOrEqual(100);
+    expect(run.plumeAtUserScore).toBeGreaterThan(0);
+  });
 });
