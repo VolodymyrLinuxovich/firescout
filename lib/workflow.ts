@@ -301,12 +301,12 @@ export async function handleCurrentRisk(params: {
 
   const recommendation = getRecommendation(riskComponents.riskLevel, activity);
   const sources = [
-    airQuality ? "AirNow" : null,
+    airQuality ? aqiSource : null,
     fires.length ? "NASA FIRMS" : null,
-    wind ? "NWS" : null,
+    wind ? windSource : null,
     plume ? "FireScout plume model" : null,
     config.useMockData ? "(Mock Data)" : null,
-  ].filter(Boolean) as string[];
+  ].filter((s, i, all): s is string => s !== null && all.indexOf(s) === i);
 
   const report: RiskReport = {
     location: loc,
