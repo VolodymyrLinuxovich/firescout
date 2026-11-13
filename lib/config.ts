@@ -1,11 +1,3 @@
-function requireEnv(name: string): string {
-  const val = process.env[name];
-  if (!val && process.env.USE_MOCK_DATA !== "true") {
-    console.warn(`[FireScout] Missing env var: ${name} — set USE_MOCK_DATA=true to use mock data`);
-  }
-  return val ?? "";
-}
-
 export const config = {
   useMockData: process.env.USE_MOCK_DATA === "true",
   airnowApiKey: process.env.AIRNOW_API_KEY ?? "",

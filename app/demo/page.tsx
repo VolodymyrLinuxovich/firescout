@@ -71,7 +71,7 @@ export default function DemoPage() {
   const [pipelineTrace, setPipelineTrace] = useState<PipelineTraceType | null>(null);
   const [memoryFacts, setMemoryFacts] = useState<XTraceMemoryFact[]>([]);
   const [deltaReport, setDeltaReport] = useState<DeltaReport | null>(null);
-  const [photonMsg, setPhotonMsg] = useState<PhotonMsg | null>(null);
+  const [, setPhotonMsg] = useState<PhotonMsg | null>(null);
   const [loading, setLoading] = useState(false);
   const [seedStatus, setSeedStatus] = useState<"idle" | "seeded">("idle");
   const [isMock, setIsMock] = useState(false);

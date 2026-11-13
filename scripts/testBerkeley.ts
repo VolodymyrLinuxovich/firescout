@@ -78,6 +78,7 @@ async function main() {
 
   // 7. Generate report text
   const recommendation = getRecommendation(riskComponents.riskLevel, "outdoor running");
+  console.log(`   Recommendation: ${recommendation}\n`);
   const sources = ["AirNow (mock)", "NASA FIRMS (mock)", "NWS (mock)", "FireScout plume model"];
   const reportText = getSummaryText(
     loc.name,
