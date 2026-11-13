@@ -126,3 +126,29 @@ describe("getSummaryText", () => {
     expect(text).not.toContain("What changed");
   });
 });
+
+describe("computeRiskScore range", () => {
+  it("never returns a negative score when air quality improves", () => {
+    const result = computeRiskScore({
+      airQuality: air(30, "Good"),
+      previousAirQuality: air(70, "Moderate"),
+      fires: [],
+    });
+    expect(result.trendScore).toBe(-15);
+    expect(result.finalRisk).toBe(0);
+    expect(result.riskLevel).toBe("CLEAR");
+  });
+
+  it("picks the level from the rounded score it reports", () => {
+    // 0.45 * 25 + 0.25 * 41 + 0.05 * 75 = 25.25, shown as 25
+    const result = computeRiskScore({
+      airQuality: air(70, "Moderate"),
+      fires: [],
+      plumeAtUserScore: 41,
+      activity: "running",
+    });
+    expect(result.finalRisk).toBe(25);
+    expect(result.riskLevel).toBe(riskLevelFromScore(result.finalRisk));
+    expect(result.riskLevel).toBe("CLEAR");
+  });
+});

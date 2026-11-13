@@ -115,7 +115,10 @@ export function computeRiskScore(params: {
     0.10 * fScore +
     0.05 * aAct;
 
-  const level = riskLevelFromScore(finalRisk);
+  // The improving trend weighs in negatively, so clamp to 0..100. Pick the
+  // level from the rounded score so the shown number and level agree.
+  const shownRisk = Math.round(Math.min(Math.max(finalRisk, 0), 100));
+  const level = riskLevelFromScore(shownRisk);
 
   const components = { aqiScore: aScore, plumeScore: pScore, trendScore: tScore, fireProximityScore: fScore, activityScore: aAct };
 
@@ -129,7 +132,7 @@ export function computeRiskScore(params: {
 
   return {
     ...components,
-    finalRisk: Math.round(Math.min(finalRisk, 100)),
+    finalRisk: shownRisk,
     riskLevel: level,
     mainDriver: mainDriverLabel(components),
     confidence,
